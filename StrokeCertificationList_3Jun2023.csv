@@ -1,0 +1,224 @@
+﻿OrganizationId,Program,CertificationProgram,OrganizationName,StreetAddress,City,State,PostalCode,plus4,CertificationDecision,EffectiveDate
+7615,DSC     ,Acute Stroke Ready Hospital             ,Langlade Hospital-Hotel Dieu of St Joseph of Antigo Wis,112 East Fifth Avenue,Antigo,WI,54409,,Certification                           ,03/23/2022
+,DNV,Acute Stroke Ready Hospital             ,ThedaCare Medical Center - Berlin,225 Memorial Dr,Berlin,WI,54923,,Certification                           ,10/11/22
+,DNV,Acute Stroke Ready Hospital             ,Aurora Medical Center - Burlington,252 Mchenry St,Burlington,WI,53105,,Certification                           ,5/24/23
+,DNV,Acute Stroke Ready Hospital             ,Aurora Lakeland Medical Center,W3985 County Rd NN,Elkhorn,WI,53121,,Certification                           ,5/23/22
+,DNV,Acute Stroke Ready Hospital             ,Aurora Medical Center - Washington County,1032 E Sumner St,Hartford,WI,53027,1698,Certification                           ,5/20/22
+,DNV,Acute Stroke Ready Hospital             ,Hudson Hospital & Clinic,405 Stageline Rd,Hudson,WI,54016,7848,Certification                           ,12/29/20
+7644,DSC     ,Acute Stroke Ready Hospital             ,Mercy Health System Corporation,1000 Mineral Point Avenue,Janesville,WI,53548,,Certification                           ,12/07/2022
+,DNV,Acute Stroke Ready Hospital             ,Aurora Medical Center - Bay Area,3003 University Dr,Marinette,WI,54143,4110,Certification                           ,5/19/22
+4438,DSC     ,Acute Stroke Ready Hospital             ,"Aspirus Medford Hospital & Clinics, Inc.",135 South Gibson Street,Medford,WI,54451,,Certification                           ,04/14/2021
+,DNV,Acute Stroke Ready Hospital             ,ThedaCare Medical Center - New London,1405 Mill St,New London,WI,54961,,Certification                           ,10/13/22
+7697,DSC     ,Acute Stroke Ready Hospital             ,Lakeview Medical Center,1700 West Stout Street,Rice Lake,WI,54868,,Certification                           ,07/20/2022
+,DNV,Acute Stroke Ready Hospital             ,St. Croix Health,235 E State St,Saint Croix Falls,WI,54024,,Certification                           ,2/2/23
+,DNV,Acute Stroke Ready Hospital             ,ThedaCare Medical Center - Shawano,100 County Rd B,Shawano,WI,54166,,Certification                           ,10/19/22
+,DNV,Acute Stroke Ready Hospital             ,ThedaCare Medical Center - Waupaca,800 Riverside Dr,Waupaca,WI,54981,,Certification                           ,10/18/22
+,DNV,Acute Stroke Ready Hospital             ,ThedaCare Medical Center - Wild Rose,601 Grove Ave,Wild Rose,WI,54984,,Certification                           ,10/12/22
+4447,DSC     ,Acute Stroke Ready Hospital             ,Aspirus Riverview Hospital and Clinics,410 Dewey Street,Wisconsin Rapids,WI,54495,,Certification                           ,02/12/2022
+,DNV,Advanced Comprehensive Stroke Center    ,Aurora BayCare Medical Center,2845 Greenbrier Rd,Green Bay,WI,54308,,Certification                           ,5/18/22
+,DNV,Advanced Comprehensive Stroke Center    ,HSHS St. Vincent Hospital,835 S Van Buren St,Green Bay,WI,54307,,Certification                           ,9/18/20
+7656,DSC     ,Advanced Comprehensive Stroke Center    ,University of Wisconsin Hospitals and Clinics Authority,600 Highland Avenue,Madison,WI,53792,,Certification                           ,12/14/2022
+7677,DSC     ,Advanced Comprehensive Stroke Center    ,"Ascension Columbia St. Mary's Hospital Milwaukee, Inc",2301 North Lake Drive,Milwaukee,WI,53211,,Certification                           ,01/20/2023
+7718,DSC     ,Advanced Comprehensive Stroke Center    ,"Froedtert Memorial Lutheran Hospital, Inc",9200 West Wisconsin Avenue,Milwaukee,WI,53226,,Certification                           ,02/03/2022
+,DNV,Advanced Comprehensive Stroke Center    ,Aurora Health Care Metro Inc,2900 W Oklahoma Ave,Milwaukee,WI,53215,4330,Certification                           ,5/18/22
+,DNV,Advanced Comprehensive Stroke Center    ,ThedaCare Regional Medical Center - Neenah,130 2nd St,Neenah,WI,54956,,Certification                           ,11/26/22
+7617,DSC     ,Advanced Primary Stroke Center          ,"Ascension NE Wisconsin, Inc.",1506 South Oneida Street,Appleton,WI,54915,,Certification                           ,12/15/2022
+,DNV,Advanced Primary Stroke Center          ,ThedaCare Regional Medical Center - Appleton,1818 N Meade St,Appleton,WI,54911,,Certification                           ,2/1/23
+7620,DSC     ,Advanced Primary Stroke Center          ,Beloit Health System,1969 West Hart Road,Beloit,WI,53511,,Certification                           ,07/09/2022
+7632,DSC     ,Advanced Primary Stroke Center          ,"Mayo Clinic Health System - Northwest Wisconsin Region, Inc",1221 Whipple Street,Eau Claire,WI,54702,4105,Certification                           ,08/21/2021
+617713,DSC     ,Advanced Primary Stroke Center          ,"MCHS Hospitals, Inc.",2310 Craig Road,Eau Claire,WI,54701,,Certification                           ,04/11/2022
+,DNV,Advanced Primary Stroke Center          ,HSHS Sacred Heart Hospital,900 W Clairemont Ave,Eau Claire,WI,54701,6122,Certification                           ,1/5/23
+7635,DSC     ,Advanced Primary Stroke Center          ,ST. AGNES HOSPITAL,430 E. DIVISION ST.,Fond Du Lac,WI,54935,,Certification                           ,10/06/2021
+,DNV,Advanced Primary Stroke Center          ,Aurora Medical Center Grafton LLC,975 Port Washington Rd,Grafton,WI,53024,9204,Certification                           ,9/23/20
+7639,DSC     ,Advanced Primary Stroke Center          ,St. Mary's Hospital Medical Center,1726 Shawano Avenue,Green Bay,WI,54303,3282,Certification                           ,08/19/2022
+,DNV,Advanced Primary Stroke Center          ,Bellin Memorial Hospital,744 S Webster Ave,Green Bay,WI,54301,,Certification                           ,9/4/20
+7644,DSC     ,Advanced Primary Stroke Center          ,Mercy Health System Corporation,1000 Mineral Point Avenue,Janesville,WI,53548,,Certification                           ,12/08/2022
+7646,DSC     ,Advanced Primary Stroke Center          ,"Froedtert South, Inc.",6308 8th Avenue,Kenosha,WI,53143,5082,Certification                           ,08/26/2021
+,DNV,Advanced Primary Stroke Center          ,Aurora Medical Center - Kenosha,10400 75th St,Kenosha,WI,53142,,Certification                           ,5/2/22
+7649,DSC     ,Advanced Primary Stroke Center          ,"Gundersen Lutheran Medical Center, Inc.",1910 South Avenue,La Crosse,WI,54601,,Certification                           ,04/07/2021
+7650,DSC     ,Advanced Primary Stroke Center          ,"Mayo Clinic Health System - Franciscan Medical Center, Inc.",700 West Avenue South,La Crosse,WI,54601,,Certification                           ,04/16/2022
+7661,DSC     ,Advanced Primary Stroke Center          ,"MCHS Hospitals, Inc.",611 St. Joseph Avenue,Marshfield,WI,54449,,Certification                           ,01/19/2023
+7662,DSC     ,Advanced Primary Stroke Center          ,"Community Memorial Hospital of Menomonee Falls, Inc.",W180 N8085 Town Hall Road,Menomonee Falls,WI,53051,,Certification                           ,05/04/2022
+7677,DSC     ,Advanced Primary Stroke Center          ,"Ascension Columbia St. Mary's Hospital Milwaukee, Inc",2301 North Lake Drive,Milwaukee,WI,53211,,Certification                           ,11/03/2021
+7673,DSC     ,Advanced Primary Stroke Center          ,"Ascension St. Francis Hospital, Inc.",3237 South 16th Street,Milwaukee,WI,53215,,Certification                           ,11/17/2022
+7674,DSC     ,Advanced Primary Stroke Center          ,"Ascension SE Wisconsin Hospital, Inc.",5000 West Chambers Street,Milwaukee,WI,53210,,Certification                           ,03/04/2022
+7695,DSC     ,Advanced Primary Stroke Center          ,"Ascension All Saints Hospital, Inc",3801 Spring Street,Mt Pleasant,WI,53405,,Certification                           ,07/12/2022
+7685,DSC     ,Advanced Primary Stroke Center          ,"ProHealth Oconomowoc Memorial Hospital, Inc.",791 Summit Avenue,Oconomowoc,WI,53066,3896,Certification                           ,01/29/2022
+,DNV,Advanced Primary Stroke Center          ,Aurora Medical Center Oshkosh,855 N Westhaven Dr,Oshkosh,WI,54904,,Certification                           ,10/22/22
+7703,DSC     ,Advanced Primary Stroke Center          ,St. Nicholas Hospital,3100 Superior Avenue,Sheboygan,WI,53081,,Certification                           ,03/18/2022
+,DNV,Advanced Primary Stroke Center          ,Aurora Medical Center Sheboygan County,2629 N 7th St,Sheboygan,WI,53083,,Certification                           ,5/18/22
+,DNV,Advanced Primary Stroke Center          ,Aurora Medical Center Summit,36500 Aurora Dr,Oconomowoc,WI,53066,4899,Certification                           ,5/19/22
+,DNV,Advanced Primary Stroke Center          ,Aurora Medical Center Manitowoc County,5000 Memorial Dr,Two Rivers,WI,54241,,Certification                           ,10/12/22
+7714,DSC     ,Advanced Primary Stroke Center          ,"Waukesha Memorial Hospital,  Inc.",725 American Avenue,Waukesha,WI,53188,5099,Certification                           ,11/16/2022
+7717,DSC     ,Advanced Primary Stroke Center          ,Aspirus Wausau Hospital,333 Pine Ridge Boulevard,Wausau,WI,54401,4187,Certification                           ,01/20/2023
+,DNV,Advanced Primary Stroke Center          ,Aurora West Allis Medical Center,8901 W Lincoln Ave,West Allis,WI,53227,,Certification                           ,5/20/22
+7720,DSC     ,Advanced Primary Stroke Center          ,St. Joseph's Community Hospital of West Bend Inc.,3200 Pleasant Valley Rd,West Bend,WI,53095,,Certification                           ,08/19/2021
+413499,DSC     ,Advanced Primary Stroke Center          ,"MCHS Hospitals, Inc.",3400 Ministry Parkway,Weston,WI,54476,,Certification                           ,01/30/2023
+7655,DSC     ,Advanced Thrombectomy Capable Stroke Ctr,"SSM Healthcare of Wisconsin, Inc.",700 South Park Street,Madison,WI,53715,450,Certification                           ,12/23/2022
+309747,DSC     ,Acute Stroke Ready Hospital             ,M Health Fairview Woodwinds Hospital,1925 Woodwinds Drive,Woodbury,MN,55125,,Certification                           ,01/27/2022
+2908,DSC     ,Advanced Comprehensive Stroke Center    ,"University of Minnesota Medical Center, Fairview",2450 Riverside Avenue,Minneapolis,MN,55454,,Certification                           ,08/18/2022
+8181,DSC     ,Advanced Comprehensive Stroke Center    ,Mayo Clinic Hospital — Rochester,1216 Second Street SW,Rochester,MN,55902,1906,Certification                           ,08/14/2021
+8185,DSC     ,Advanced Comprehensive Stroke Center    ,Regions Hospital,640 Jackson Street,Saint Paul,MN,55101,,Certification                           ,06/25/2022
+8148,DSC     ,Advanced Primary Stroke Center          ,Mayo Clinic Health System - Southwest Minnesota Region,1025 Marsh Street,Mankato,MN,56001,4752,Certification                           ,12/01/2021
+298611,DSC     ,Advanced Primary Stroke Center          ,M Health Fairview St. John's Hospital,1575 Beam Avenue,Maplewood,MN,55109,,Certification                           ,01/26/2022
+8156,DSC     ,Advanced Thrombectomy Capable Stroke Ctr,Fairview Southdale Hospital,6401 France Avenue South,Edina,MN,55435,2199,Certification                           ,12/12/2022
+8131,DSC     ,Advanced Thrombectomy Capable Stroke Ctr,St. Mary's Medical Center,407 East Third Street,Duluth,MN,55805,,Certification                           ,09/16/2021
+,DNV,Advanced Primary Stroke Center          ,Essentia Health St. Joseph's Medical Center,523 N 3rd St,Brainerd,MN,56401,,Certification                           ,3/29/23
+,DNV,Advanced Primary Stroke Center          ,Mercy Hospital - Unity Campus,550 Osborne Rd NE,Fridley,MN,55432,,Certification                           ,2/17/22
+,DNV,Advanced Comprehensive Stroke Center    ,North Memorial Health Hospital,3300 Oakdale Ave N,Robbinsdale,MN,55422,,Certification                           ,6/11/20
+,DNV,Advanced Primary Stroke Center          ,St. Luke's Hospital of Duluth,915 E 1st St,Duluth,MN,55805,,Certification                           ,2/26/21
+,DNV,Advanced Primary Stroke Center          ,Mercy Hospital ,4050 Coon Rapids Blvd,Coon Rapids,MN,55433,,Certification                           ,4/26/23
+,DNV,Advanced Comprehensive Stroke Center    ,Abbott Northwestern Hospital,800 E 28th St,Minneapolis,MN,55407,,Certification                           ,10/28/20
+,DNV,Advanced Comprehensive Stroke Center    ,CentraCare Health - St. Cloud Hospital,1406 6th Ave N,St. Cloud,MN,56303,,Certification                           ,7/16/21
+,DNV,Advanced Comprehensive Stroke Center    ,"Hennepin Healthcare System, Inc.",701 Park Ave,Minneapolis,MN,55415,,Certification                           ,3/11/22
+,DNV,Advanced Comprehensive Stroke Center    ,Park Nicollet Methodist Hospital,6500 Excelsior Blvd,St. Louis Park,MN,55426,,Certification                           ,5/13/22
+,DNV,Advanced Comprehensive Stroke Center    ,United Hospital,333 Smith Ave N,St. Paul,MN,55102,,Certification                           ,10/30/20
+4672,DSC     ,Acute Stroke Ready Hospital             ,"Mercy Harvard Hospital, Inc.",901 Grant Street,Harvard,IL,60033,,Certification                           ,07/16/2022
+7340,DSC     ,Advanced Comprehensive Stroke Center    ,Alexian Brothers Medical Center,800 Biesterfield Road,Elk Grove Village,IL,60007,3397,Certification                           ,09/04/2021
+7343,DSC     ,Advanced Comprehensive Stroke Center    ,NorthShore University HealthSystem,2650 Ridge Ave,Evanston,IL,60201,,Certification                           ,12/08/2021
+7315,DSC     ,Advanced Comprehensive Stroke Center    ,University of Chicago Medical Center,5841 South Maryland Avenue,Chicago,IL,60637,,Certification                           ,04/28/2022
+7297,DSC     ,Advanced Comprehensive Stroke Center    ,Rush University Medical Center,1653 West Congress Parkway,Chicago,IL,60612,,Certification                           ,06/30/2022
+7282,DSC     ,Advanced Comprehensive Stroke Center    ,The Board of Trustees of the University of Illinois,"1740 W Taylor Street, Ste 1400",Chicago,IL,60612,,Certification                           ,01/27/2022
+7267,DSC     ,Advanced Comprehensive Stroke Center    ,Northwestern Memorial Hospital,251 E. Huron Street,Chicago,IL,60611,,Certification                           ,10/19/2022
+7288,DSC     ,Advanced Comprehensive Stroke Center    ,Loyola University Medical Center,2160 South First Avenue,Maywood,IL,60153,,Certification                           ,07/09/2022
+7410,DSC     ,Advanced Comprehensive Stroke Center    ,OSF HealthCare Saint Francis Medical Center,530 NE Glen Oak Avenue,Peoria,IL,61637,,Certification                           ,10/14/2021
+7431,DSC     ,Advanced Comprehensive Stroke Center    ,Memorial Medical Center,701 North First Street,Springfield,IL,62781,0001,Certification                           ,12/18/2021
+7444,DSC     ,Advanced Comprehensive Stroke Center    ,Central DuPage Hospital Association,25 North Winfield Road,Winfield,IL,60190,,Certification                           ,10/21/2021
+7343,DSC     ,Advanced Primary Stroke Center          ,NorthShore University HealthSystem,2650 Ridge Ave,Evanston,IL,60201,,Certification                           ,09/18/2021
+7391,DSC     ,Advanced Primary Stroke Center          ,Good Samaritan Regional Health Center,1 Good Samaritan Way,Mount Vernon,IL,62864,,Certification                           ,04/12/2022
+7375,DSC     ,Advanced Primary Stroke Center          ,Northern Illinois Medical Center,4201 Medical Center Drive,McHenry,IL,60050,,Certification                           ,10/14/2021
+3918,DSC     ,Advanced Primary Stroke Center          ,Northwestern Lake Forest Hospital,1000 North Westmoreland Road,Lake Forest,IL,60045,,Certification                           ,09/16/2022
+7370,DSC     ,Advanced Primary Stroke Center          ,Adventist Midwest Health,5101 South Willow Springs Road,La Grange,IL,60525,,Certification                           ,10/16/2021
+7367,DSC     ,Advanced Primary Stroke Center          ,Presence Central and Suburban Hospitals Network,500 West Court Street,Kankakee,IL,60901,,Certification                           ,04/13/2022
+5173,DSC     ,Advanced Primary Stroke Center          ,St. Alexius Medical Center,1555 Barrington Road,Hoffman Estates,IL,60169,,Certification                           ,07/30/2022
+7359,DSC     ,Advanced Primary Stroke Center          ,Adventist Midwest Health,120 North Oak Street,Hinsdale,IL,60521,3890,Certification                           ,12/11/2021
+7357,DSC     ,Advanced Primary Stroke Center          ,Herrin Hospital,201 South 14th Street,Herrin,IL,62948,,Certification                           ,02/18/2021
+5192,DSC     ,Advanced Primary Stroke Center          ,Adventist GlenOaks Hospital,701 Winthrop Avenue,Glendale Heights,IL,60139,,Certification                           ,04/26/2022
+5291,DSC     ,Advanced Primary Stroke Center          ,Delnor-Community Hospital,300 Randall Road,Geneva,IL,60134,,Certification                           ,10/04/2022
+7344,DSC     ,Advanced Primary Stroke Center          ,d/b/a OSF Healthcare  Little Co of Mary Medical Center,2800 West 95th Street,Evergreen Park,IL,60805,,Certification                           ,10/30/2021
+4176,DSC     ,Advanced Primary Stroke Center          ,Presence Chicago Hospitals Network,355 Ridge Avenue,Evanston,IL,60202,,Certification                           ,02/02/2022
+7341,DSC     ,Advanced Primary Stroke Center          ,Edward-Elmhurst Health,155 East Brush Hill Road,Elmhurst,IL,60126,,Certification                           ,04/16/2022
+7338,DSC     ,Advanced Primary Stroke Center          ,Presence Central and Suburban Hospitals Network,77 North Airlite Street,Elgin,IL,60123,,Certification                           ,07/19/2022
+7325,DSC     ,Advanced Primary Stroke Center          ,Kishwaukee Community Hospital,1 Kish Hospital Drive,Dekalb,IL,60115,,Certification                           ,09/28/2022
+4632,DSC     ,Advanced Primary Stroke Center          ,Decatur Memorial Hospital,2300 North Edward Street,Decatur,IL,62526,,Certification                           ,07/27/2022
+4928,DSC     ,Advanced Primary Stroke Center          ,OSF HealthCare System,812 North Logan Avenue,Danville,IL,61832,,Certification                           ,08/20/2021
+7308,DSC     ,Advanced Primary Stroke Center          ,Presence Chicago Hospitals Network,2233 West Division Street,Chicago,IL,60622,,Certification                           ,12/22/2021
+7307,DSC     ,Advanced Primary Stroke Center          ,Presence Chicago Hospitals Network,2900 North Lake Shore Drive,Chicago,IL,60657,,Certification                           ,01/29/2022
+7295,DSC     ,Advanced Primary Stroke Center          ,"Community First Healthcare of Illinois, Inc.",5645 West Addison Street,Chicago,IL,60634,,Certification                           ,03/16/2022
+7294,DSC     ,Advanced Primary Stroke Center          ,Mount Sinai Hospital Medical Center of Chicago,1500 S. Fairfield,Chicago,IL,60608,,Certification                           ,04/30/2021
+7286,DSC     ,Advanced Primary Stroke Center          ,Louis A. Weiss Memorial Hospital,4646 North Marine Drive,Chicago,IL,60640,,Certification                           ,08/25/2022
+7279,DSC     ,Advanced Primary Stroke Center          ,Saint Anthony Hospital,2875 West 19th Street,Chicago,IL,60623,,Certification                           ,07/16/2022
+7271,DSC     ,Advanced Primary Stroke Center          ,"John H. Stroger, Jr., Hospital of Cook County",1969 West Ogden Street,Chicago,IL,60612,,Certification                           ,02/24/2023
+7252,DSC     ,Advanced Primary Stroke Center          ,Memorial Hospital of Carbondale,405 West Jackson Street,Carbondale,IL,62901,,Certification                           ,02/17/2021
+454359,DSC     ,Advanced Primary Stroke Center          ,Adventist Bolingbrook Hospital,500 Remington Boulevard,Bolingbrook,IL,60440,,Certification                           ,08/07/2021
+7248,DSC     ,Advanced Primary Stroke Center          ,OSF St. Joseph Medical Center,2200 East Washington Street,Bloomington,IL,61701,,Certification                           ,12/10/2021
+7246,DSC     ,Advanced Primary Stroke Center          ,Gottlieb Community Health Services Corporation,3249 South Oak Park Avenue,Berwyn,IL,60402,,Certification                           ,09/22/2021
+7240,DSC     ,Advanced Primary Stroke Center          ,Presence Central and Suburban Hospitals Network,1325 North Highland Avenue,Aurora,IL,60506,,Certification                           ,04/15/2022
+7239,DSC     ,Advanced Primary Stroke Center          ,"Copley Memorial Hospital, Inc.",2000 Ogden Avenue,Aurora,IL,60504,4206,Certification                           ,04/14/2022
+7237,DSC     ,Advanced Primary Stroke Center          ,OSF HealthCare Saint Anthony's Health Center,One Saint Anthony's Way,Alton,IL,62002,340,Certification                           ,12/08/2021
+4286,DSC     ,Advanced Primary Stroke Center          ,Alton Memorial Hospital,One Memorial Drive,Alton,IL,62002,,Certification                           ,05/15/2021
+7442,DSC     ,Advanced Primary Stroke Center          ,"Waukegan IL Hospital Company, LLC",1324 North Sheridan Road,Waukegan,IL,60085,,Certification                           ,12/11/2021
+7365,DSC     ,Advanced Primary Stroke Center          ,Silver Cross Hospital,1900 Silver Cross Blvd,New Lenox,IL,60451,,Certification                           ,09/09/2021
+7398,DSC     ,Advanced Primary Stroke Center          ,"Rush Oak Park Hospital, Inc.",520 South Maple Avenue,Oak Park,IL,60304,,Certification                           ,12/11/2021
+4968,DSC     ,Advanced Primary Stroke Center          ,OSF HealthCare System,1400 West Park Street,Urbana,IL,61801,,Certification                           ,08/21/2021
+7399,DSC     ,Advanced Primary Stroke Center          ,"Pipeline West Suburban Medical Center, LLC",3 Erie Court,Oak Park,IL,60302,,Certification                           ,05/11/2022
+7408,DSC     ,Advanced Primary Stroke Center          ,The Methodist Medical Center of Illinois,221 Northeast Glen Oak Avenue,Peoria,IL,61636,,Certification                           ,08/20/2022
+7432,DSC     ,Advanced Primary Stroke Center          ,HSHS St. John's Hospital,800 East Carpenter Street,Springfield,IL,62769,,Certification                           ,11/13/2021
+,DNV,Advanced Primary Stroke Center          ,Advocate Condell Medical Center,801 S Milwaukee Ave,Libertyville,IL,60048,,Certification                           ,4/5/22
+,DNV,Advanced Primary Stroke Center          ,Advocate Good Samaritan Hospital,3815 Highland Ave,Downers Grove,IL,60515,,Certification                           ,4/6/22
+,DNV,Advanced Primary Stroke Center          ,Advocate Shepherd Hospital,450 IL-22,Barrington,IL,60010,,Certification                           ,4/5/22
+,DNV,Advanced Primary Stroke Center          ,Advocate Illinois Masonic Medical Center,836 W Wellington Ave,Chicago,IL,60657,,Certification                           ,5/4/23
+,DNV,Advanced Primary Stroke Center          ,Advocate Sherman Hospital,1425 N Randall Rd,Elgin,IL,60123,,Certification                           ,4/6/22
+,DNV,Advanced Primary Stroke Center          ,Advocate Trinity Hospital,2320 E 93rd St,Chicago,IL,4/15/22,,Certification                           ,4/15/22
+,DNV,Advanced Primary Stroke Center          ,Blessing Hospital,1005 Broadway St,Quincy,IL,62305,,Certification                           ,11/23/20
+,DNV,Advanced Primary Stroke Center          ,Carle BroMenn Medical Center,1304 Frankling Ave,Normal,IL,61761,,Certification                           ,10/8/21
+,DNV,Advanced Primary Stroke Center          ,Ingalls Memorial Hospital,1 Ingalls Dr,Harvey,IL,60426,,Certification                           ,5/5/21
+,DNV,Advanced Primary Stroke Center          ,Riverside Medical Center,350 N Wall St,Kankakee,IL,60901,,Certification                           ,6/2/21
+,DNV,Advanced Primary Stroke Center          ,Trinity Rock Island,2701 17th St,Rock Island,IL,61201,,Certification                           ,9/28/22
+,DNV,Advanced Comprehensive Stroke Center    ,Advocate Christ Medical Center and Advocate Children's Hospital - Oak Lawn,4440 W 95th St,Oak Lawn,IL,60453,,Certification                           ,4/13/22
+,DNV,Advanced Comprehensive Stroke Center    ,Advocate Lutheran General Hospital,1775 Dempster St,Park Ridge,IL,60068,,Certification                           ,4/8/22
+,DNV,Advanced Comprehensive Stroke Center    ,Carle Foundation Hospital,611 W Park St,Urbana,IL,61822,,Certification                           ,7/17/22
+,DNV,Advanced Comprehensive Stroke Center    ,Presence Resurrection Medical Center,7435 W Talcott Ave,Chicago,IL,60631,,Certification                           ,12/4/20
+,DNV,Advanced Comprehensive Stroke Center    ,Edward Hsopital,801 S Washington St,Naperville,IL,60540,,Certification                           ,6/30/20
+,DNV,Advanced Comprehensive Stroke Center    ,Javon Bea Hospital,8201 E Riverside Blvd,Rockford,IL,61103,,Certification                           ,6/24/22
+,DNV,Advanced Comprehensive Stroke Center    ,Northwest Community Hospital,800 W Central Rd,Arlington Heights,IL,60005,,Certification                           ,2/21/23
+,DNV,Advanced Comprehensive Stroke Center    ,OSF Healthcare Saint Anthony Medical Center,5666 E State St,Rockford,IL,61108,,Certification                           ,3/5/21
+,DNV,Advanced Comprehensive Stroke Center    ,Presence Saint Joseph Medical Center,333 Madison St,Joliet,IL,60435,,Certification                           ,3/4/22
+,HFAP,Advanced Primary Stroke Center          ,Holy Cross Hospital,2701 W 68th St,Chicago,IL,60629,,Certification                           ,
+,HFAP,Advanced Primary Stroke Center          ,Humboldt Park Health,1044 N Francisco Ave,Chicago,IL,60622,,Certification                           ,
+,HFAP,Advanced Primary Stroke Center          ,Insight Hospital and Medical Center,2525 S Michigan Ave,Chicago,IL,60616,,Certification                           ,
+,HFAP,Advanced Primary Stroke Center          ,Morris Hospital and Healthcare Centers,150 W High St,Morris ,IL,60450,,Certification                           ,
+,HFAP,Advanced Primary Stroke Center          ,Swedish Hospital,5140 N California Ave,Chicago,IL,60625,,Certification                           ,
+8266,DSC     ,Advanced Comprehensive Stroke Center    ,State University of Iowa,200 Hawkins Drive,Iowa City,IA,52242,,Certification                           ,10/28/2021
+56709,DSC     ,Advanced Primary Stroke Center          ,"Genesis Medical Center, Davenport",1227 East Rusholme Street,Davenport,IA,52803,,Certification                           ,08/13/2022
+8237,DSC     ,Advanced Primary Stroke Center          ,CHI Health Mercy Council Bluffs,800 Mercy Drive,Council Bluffs,IA,51503,,Certification                           ,06/22/2022
+8236,DSC     ,Advanced Primary Stroke Center          ,Jennie Edmundson Memorial Hospital,933 East Pierce Street,Council Bluffs,IA,51503,,Certification                           ,10/30/2021
+4282,DSC     ,Advanced Primary Stroke Center          ,Mercy Medical Center,701 - 10th Street SE,Cedar Rapids,IA,52403,,Certification                           ,04/01/2023
+8301,DSC     ,Advanced Primary Stroke Center          ,Marian Health Center SMHC,801 Fifth Street,Sioux City,IA,51101,,Certification                           ,09/15/2021
+8297,DSC     ,Advanced Primary Stroke Center          ,Montgomery County Memorial Hospital,2301 Eastern Avenue,Red Oak,IA,51566,,Certification                           ,06/08/2022
+8278,DSC     ,Advanced Primary Stroke Center          ,Mercy Health Services - Iowa Corp,1000 4th Street Southwest,Mason City,IA,50401,,Certification                           ,07/23/2022
+8265,DSC     ,Advanced Primary Stroke Center          ,Mercy Hospital Iowa City,500 East Market Street,Iowa City,IA,52245,,Certification                           ,09/24/2022
+2405,DSC     ,Advanced Primary Stroke Center          ,Mercy Health Services - Iowa,250 Mercy Drive,Dubuque,IA,52001,,Certification                           ,06/09/2021
+8248,DSC     ,Advanced Thrombectomy Capable Stroke Ctr,"Catholic Health Initiatives - Iowa, Corp.",1111 6th Avenue,Des Moines,IA,50314,,Certification                           ,01/24/2023
+,DNV,Advanced Primary Stroke Center          ,Finley Hospital,350 N Grandview Ave,Dubuque,IA,52001,,Certification                           ,8/3/22
+,DNV,Advanced Primary Stroke Center          ,Greater Regional Health,1700 W Townline St,Creston,IA,50801,,Certification                           ,3/24/21
+,DNV,Advanced Primary Stroke Center          ,Mary Greeley Medical Center,1111 Duff Ave,Ames,IA,50010,,Certification                           ,3/10/21
+,DNV,Advanced Primary Stroke Center          ,St. Luke's Methodist Hospital,1026 A Ave NE,Cedar Rapids,IA,52402,,Certification                           ,10/7/22
+,DNV,Advanced Primary Stroke Center          ,St. Luke's Regional Medical Center,2720 Stone Park Blvd,Sioux City,IA,51104,,Certification                           ,1/19/23
+,DNV,Advanced Primary Stroke Center          ,Trinity Bettendorf,4500 Utica Ridge Rd,Bettendorf,IA,52722,,Certification                           ,9/30/22
+,DNV,Advanced Primary Stroke Center          ,Trinity Regional Medical Center,802 Kenyon Rd,Fort Dodge,IA,50501,,Certification                           ,5/26/21
+,DNV,Advanced Primary Stroke Center          ,UnityPoint Health - Des Moines,1415 Woodland Ave,Des Moines,IA,50309,,Certification                           ,7/17/22
+,DNV,Advanced Primary Stroke Center          ,UnityPoint Health - Allen Hospital,1825 Logan Ave,Waterloo,IA,50703,1916,Certification                           ,10/5/22
+593571,DSC     ,Acute Stroke Ready Hospital             ,McLaren Central Michigan,1221 South Drive,Mount Pleasant,MI,48858,,Certification                           ,05/09/2022
+7569,DSC     ,Acute Stroke Ready Hospital             ,The Memorial Hospital,826 West King Street,Owosso,MI,48867,,Certification                           ,11/15/2022
+351533,DSC     ,Acute Stroke Ready Hospital             ,Scheurer Hospital,170 North Caseville Road,Pigeon,MI,48755,,Certification                           ,06/16/2022
+7606,DSC     ,Acute Stroke Ready Hospital             ,Henry Ford Wyandotte Hospital,2333 Biddle Avenue,Wyandotte,MI,48192,,Certification                           ,04/15/2022
+5307,DSC     ,Acute Stroke Ready Hospital             ,Bronson Battle Creek Hospital,300 North Avenue,Battle Creek,MI,49017,,Certification                           ,09/10/2021
+7457,DSC     ,Advanced Comprehensive Stroke Center    ,Regents of the University of Michigan,"1500 E Medical Center Drive, SPC 5474",Ann Arbor,MI,48109,,Certification                           ,11/09/2022
+7583,DSC     ,Advanced Comprehensive Stroke Center    ,Ascension St. Mary's Hospital,800  South Washington Avenue,Saginaw,MI,48601,,Certification                           ,09/24/2022
+7494,DSC     ,Advanced Comprehensive Stroke Center    ,Ascension Providence Hospital,16001 West Nine Mile Road,Southfield,MI,48075,4854,Certification                           ,07/15/2021
+277668,DSC     ,Advanced Comprehensive Stroke Center    ,Spectrum Health Hospitals,"100 Michigan Street, NE",Grand Rapids,MI,49503,,Certification                           ,03/10/2022
+7538,DSC     ,Advanced Comprehensive Stroke Center    ,Ascension Borgess Hospital,1521 Gull Road,Kalamazoo,MI,49048,1640,Certification                           ,12/30/2021
+7510,DSC     ,Advanced Comprehensive Stroke Center    ,McLaren Flint,401 South Ballenger Highway,Flint,MI,48532,,Certification                           ,03/02/2023
+7539,DSC     ,Advanced Comprehensive Stroke Center    ,Bronson Methodist Hospital,601 John Street,Kalamazoo,MI,49007,,Certification                           ,04/14/2022
+7498,DSC     ,Advanced Comprehensive Stroke Center    ,Ascension St. John Hospital,22101 Moross Road,Detroit,MI,48236,2172,Certification                           ,04/28/2022
+7540,DSC     ,Advanced Comprehensive Stroke Center    ,Sparrow Health System,1215 East Michigan Avenue,Lansing,MI,48912,,Certification                           ,10/07/2021
+7485,DSC     ,Advanced Comprehensive Stroke Center    ,Henry Ford Health System,2799 West Grand Boulevard,Detroit,MI,48202,,Certification                           ,08/11/2022
+579574,DSC     ,Advanced Comprehensive Stroke Center    ,McLaren Macomb,1000 Harrington St,Mount Clemens,MI,48043,2920,Certification                           ,07/21/2022
+7580,DSC     ,Advanced Comprehensive Stroke Center    ,William Beaumont Hospital,3601 West Thirteen Mile Road,Royal Oak,MI,48073,6769,Certification                           ,09/30/2021
+277668,DSC     ,Advanced Primary Stroke Center          ,Spectrum Health Hospitals,"100 Michigan Street, NE",Grand Rapids,MI,49503,,Certification                           ,03/12/2022
+7494,DSC     ,Advanced Primary Stroke Center          ,Ascension Providence Hospital,16001 West Nine Mile Road,Southfield,MI,48075,4854,Certification                           ,03/09/2023
+7606,DSC     ,Advanced Primary Stroke Center          ,Henry Ford Wyandotte Hospital,2333 Biddle Avenue,Wyandotte,MI,48192,,Certification                           ,01/11/2023
+461762,DSC     ,Advanced Primary Stroke Center          ,William Beaumont Hospital,468 Cadieux,Grosse Pointe,MI,48230,,Certification                           ,11/12/2022
+7526,DSC     ,Advanced Primary Stroke Center          ,Pennock Hospital,1009 West Green Street,Hastings,MI,49058,,Certification                           ,08/16/2022
+7536,DSC     ,Advanced Primary Stroke Center          ,"W.A. Foote Memorial Hospital, Inc.",205 N. East Ave,Jackson,MI,49201,,Certification                           ,08/24/2022
+583671,DSC     ,Advanced Primary Stroke Center          ,McLaren Greater Lansing,2900 Collins Road,Lansing,MI,48910,,Certification                           ,12/03/2021
+7542,DSC     ,Advanced Primary Stroke Center          ,McLaren Lapeer Region,1375 North Main Street,Lapeer,MI,48446,,Certification                           ,03/07/2023
+7546,DSC     ,Advanced Primary Stroke Center          ,Trinity Health Livonia,36475 Five Mile Road,Livonia,MI,48154,,Certification                           ,09/22/2022
+7547,DSC     ,Advanced Primary Stroke Center          ,Memorial Medical Center of West Michigan,One Atkinson Drive,Ludington,MI,49431,,Certification                           ,03/13/2023
+7557,DSC     ,Advanced Primary Stroke Center          ,Mercy Memorial Hospital Corporation,718 North Macomb Street,Monroe,MI,48162,,Certification                           ,04/13/2022
+7571,DSC     ,Advanced Primary Stroke Center          ,McLaren Northern Michigan,416 Connable Avenue,Petoskey,MI,49770,2297,Certification                           ,04/18/2023
+7577,DSC     ,Advanced Primary Stroke Center          ,McLaren Port Huron,1221 Pine Grove Avenue,Port Huron,MI,48060,,Certification                           ,07/24/2021
+7579,DSC     ,Advanced Primary Stroke Center          ,Ascension Providence Rochester Hospital,1101 West University Drive,Rochester,MI,48307,1831,Certification                           ,11/13/2021
+7587,DSC     ,Advanced Primary Stroke Center          ,"Lakeland Hospitals Niles and St.Joseph, Inc.",1234 Napier Avenue,Saint Joseph,MI,49085,,Certification                           ,07/28/2022
+7598,DSC     ,Advanced Primary Stroke Center          ,Munson Medical Center,1105 Sixth Street,Traverse City,MI,49684,,Certification                           ,05/15/2021
+7599,DSC     ,Advanced Primary Stroke Center          ,"Oakwood Healthcare, Inc.",5450 Fort Street,Trenton,MI,48183,,Certification                           ,09/09/2021
+7610,DSC     ,Advanced Primary Stroke Center          ,William Beaumont Hospital,44201 Dequindre Road,Troy,MI,48085,,Certification                           ,09/20/2022
+7481,DSC     ,Advanced Primary Stroke Center          ,Ascension Macomb-Oakland Hospital,11800 East Twelve Mile Road,Warren,MI,48093,,Certification                           ,10/23/2021
+7609,DSC     ,Advanced Primary Stroke Center          ,Zeeland Community Hospital,8333 Felch Street,Zeeland,MI,49464,,Certification                           ,09/28/2021
+7462,DSC     ,Advanced Primary Stroke Center          ,McLaren Bay Region,1900 Columbus Avenue,Bay City,MI,48708,,Certification                           ,07/07/2022
+7465,DSC     ,Advanced Primary Stroke Center          ,Mecosta County Medical Center,605 Oak Street,Big Rapids,MI,49307,,Certification                           ,05/17/2022
+7471,DSC     ,Advanced Primary Stroke Center          ,"Saint Joseph Mercy Chelsea, Inc.",775 South Main Street,Chelsea,MI,48118,,Certification                           ,03/15/2023
+7559,DSC     ,Advanced Primary Stroke Center          ,Henry Ford Macomb Hospital,15855 Nineteen Mile Road,Clinton Township,MI,48038,,Certification                           ,12/01/2021
+5290,DSC     ,Advanced Primary Stroke Center          ,Huron Valley - Sinai Hospital,1 William Carls Drive,Commerce Township,MI,48382,,Certification                           ,07/17/2021
+7475,DSC     ,Advanced Primary Stroke Center          ,"Oakwood Healthcare, Inc.",18101 Oakwood Boulevard,Dearborn,MI,48124,,Certification                           ,03/04/2023
+7483,DSC     ,Advanced Primary Stroke Center          ,VHS Sinai-Grace Hospital,6071 W Outer Dr,Detroit,MI,48235,,Certification                           ,03/11/2023
+7484,DSC     ,Advanced Primary Stroke Center          ,Harper University Hospital,3990 John R Street,Detroit,MI,48201,,Certification                           ,09/24/2021
+572116,DSC     ,Advanced Primary Stroke Center          ,Bostford General Hospital,28050 Grand River Ave,Farmington Hills,MI,48336,,Certification                           ,01/22/2022
+7509,DSC     ,Advanced Primary Stroke Center          ,Hurley Medical Center,One Hurley Plaza,Flint,MI,48503,,Certification                           ,09/21/2022
+159137,DSC     ,Advanced Primary Stroke Center          ,Ascension Genesys Hospital,One Genesys Parkway,Grand Blanc,MI,48439,8066,Certification                           ,04/29/2023
+400299,DSC     ,Advanced Primary Stroke Center          ,Spectrum Health United and Kelsey Hospitals,615 South Bower Street,Greenville,MI,48838,,Certification                           ,10/10/2022
+7575,DSC     ,Advanced Thrombectomy Capable Stroke Ctr,Trinity Health-Michigan,44405 Woodward Avenue,Pontiac,MI,48341,2985,Certification                           ,07/14/2022
+7455,DSC     ,Advanced Thrombectomy Capable Stroke Ctr,Trinity Health Saint Joseph Mercy Ann Arbor,5301 E. Huron River Drive,Ann Arbor,MI,48106,,Certification                           ,02/19/2022
+476530,DSC     ,Advanced Thrombectomy Capable Stroke Ctr,Henry Ford Health West Bloomfield Hospital,6777 West Maple Road,West Bloomfield,MI,48322,,Certification                           ,09/04/2021
+7495,DSC     ,Advanced Thrombectomy Capable Stroke Ctr,Detroit Receiving Hospital and University Health Center,4201 St. Antoine,Detroit,MI,48201,,Certification                           ,06/20/2022
