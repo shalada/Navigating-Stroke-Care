@@ -1,0 +1,2836 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+rm(list=ls())
+
+#libraries, etc
+```{r}
+
+library(ggmap)
+library(tidyverse)
+library(rgdal)
+library(tmap)
+library(leaflet)
+library(wesanderson)
+library(RColorBrewer)
+library(sf)
+library(hereR)
+library(censusapi)
+library(tigris)
+library(tidycensus)
+library(rgeos)
+library(raster)
+library(proj4)
+library(concaveman)
+library(summarytools)
+library(mapboxapi)
+library(car)
+library(rstatix)
+library(spatialreg)
+library(spdep)
+library(car)
+library(stargazer)
+library(flextable)
+library(projmgr)
+library(curl)
+
+```
+
+##read state shapefiles
+```{r}
+
+#read in state boundary
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+state_boundary <- readOGR("Wisconsin_State_Boundary_24K", "Wisconsin_State_Boundary_24K")
+plot(state_boundary)
+
+#read in new dnr boundary shapefile - will serve as county shapefile
+dnr_boundary <- readOGR("DNR_boundaryfile", "WICountiesWTM91")
+#plot(dnr_boundary)
+
+#load ctract-county shapefile - need for land and water area
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+#ctract_shapefile_data <- readOGR("WI_tract_shapefile", "tl_2020_55_tract")
+ctract_shapefile_data <- readOGR("tl_2018_55_tract", "tl_2018_55_tract")
+
+#load SVI shapefile - will serve as ctract shapefile
+#setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+#svi_ctract_shapefile <- readOGR("Wisconsin_SVI_CTRACT", "SVI2020_WISCONSIN_tract")
+
+##old ctracts for ruca data convenience
+#2018 ctract w/ SVI
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+svi_ctract_shapefile <- sf::st_read(dsn = "SVI2018_WISCONSIN_tract.gdb")
+svi_ctract_shapefile <- as_Spatial(svi_ctract_shapefile)
+
+```
+
+##acquire lat and long values for stroke centers
+```{r}
+
+#read data
+stroke_cent <- read.csv("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data/StrokeCertificationList_3Jun2023.csv")
+
+#create column w/ full address
+stroke_cent$address <- paste(stroke_cent$StreetAddress, ", ", stroke_cent$City, ", ", stroke_cent$State, ", ", stroke_cent$PostalCode)
+
+#add long/lat
+register_google("AIzaSyDNgJKmRZxcf81FM0ZE0RPXcYO-ZAJ0Aoc")
+stroke_cent <- cbind(stroke_cent, ggmap::geocode(stroke_cent$address))
+
+#visualize on counties
+#plot(dnr_boundary)
+#points(stroke_cent$lon, stroke_cent$lat,
+#     ylab = "Latitude", xlab="Longitude",
+#     col="blue")
+
+#visualize on leaflet
+leaflet() %>% 
+    addProviderTiles("CartoDB.Voyager") %>% 
+    addCircles(
+        data = stroke_cent, 
+        radius = 6,
+        color = "darkgreen",
+        opacity = 0.6, 
+        popup = paste0(stroke_cent$OrganizationName, ", ", stroke_cent$City))
+
+```
+
+##organize covariate files
+```{r}
+
+#read SVI and urbanicity dataframes (present in SVI shapefile already; need updated urbanicity file)
+#svi_ctract <- read.csv("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data/Wisconsin_SVI_CTRACT.csv")
+ruca_ctract <- read.csv("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data/ruca2010revised.csv")
+
+#pull area data from ctract_shapefile_data onto svi_ctract_shapefile
+ctract_shapefile_data <- subset(ctract_shapefile_data, (GEOID %in% svi_ctract_shapefile$FIPS))
+temp <- data.frame(ctract_shapefile_data$GEOID, ctract_shapefile_data$ALAND, ctract_shapefile_data$AWATER, ctract_shapefile_data$INTPTLAT, ctract_shapefile_data$INTPTLON)
+names(svi_ctract_shapefile)[names(svi_ctract_shapefile) == "FIPS"] <- "CTRACTID"
+names(temp)[names(temp) == "ctract_shapefile_data.GEOID"] <- "CTRACTID"
+names(temp)[names(temp) == "ctract_shapefile_data.ALAND"] <- "ALAND"
+names(temp)[names(temp) == "ctract_shapefile_data.AWATER"] <- "AWATER"
+names(temp)[names(temp) == "ctract_shapefile_data.INTPTLAT"] <- "INTPTLAT"
+names(temp)[names(temp) == "ctract_shapefile_data.INTPTLON"] <- "INTPTLON"
+svi_ctract_shapefile <- merge(svi_ctract_shapefile, temp, by = "CTRACTID")
+remove(temp)
+remove(ctract_shapefile_data)
+
+#remove zero land area from svi_ctract_shapefile
+svi_ctract_shapefile$ALAND <- as.integer(svi_ctract_shapefile$ALAND)
+summary(svi_ctract_shapefile$ALAND)
+#plot(ctract_shapefile_data)
+svi_ctract_shapefile <- svi_ctract_shapefile[svi_ctract_shapefile$ALAND != 0,]
+#plot(ctract_shapefile_data)
+
+#assess missingness of data per county and covariate
+for (i in 8:ncol(svi_ctract_shapefile)) {
+  if (class(svi_ctract_shapefile[[i]]) == "character") {
+    svi_ctract_shapefile[[i]] <- as.integer(svi_ctract_shapefile@data[[i]])
+  }
+}
+svi_ctract_shapefile@data[5:ncol(svi_ctract_shapefile)][svi_ctract_shapefile@data[5:ncol(svi_ctract_shapefile)] < 0] <- NaN
+dfSummary(svi_ctract_shapefile[8:(ncol(svi_ctract_shapefile)/2)])
+dfSummary(svi_ctract_shapefile[(ncol(svi_ctract_shapefile)/2):ncol(svi_ctract_shapefile)])
+
+#merge ruca data
+colnames(ruca_ctract)[colnames(ruca_ctract) == "FIPS"] ="CTRACTID"
+svi_ctract_shapefile <- merge(svi_ctract_shapefile, ruca_ctract, by="CTRACTID")
+
+#visualize some covariates
+summary(svi_ctract_shapefile$RPL_THEME1)
+pal <- brewer.pal(n = 6, name = "OrRd")
+spplot(svi_ctract_shapefile, "RPL_THEMES", col.regions=pal, cuts=5, col="transparent")
+
+
+```
+
+##drive time using Appalachia reference - http://www.hrecht.com/r-drive-time-analysis-tutorial/tutorial.html
+```{r}
+
+#convert lat/lon to planar projection for stroke centers
+stroke_cent_planar <- st_as_sf(stroke_cent, coords = c("lon", "lat")) %>% 
+    st_set_crs(4326)
+
+#Wisconsin buffer
+states <- states()
+ms_boundary <- states %>% filter(STUSPS == "WI")
+ms_boundary <- ms_boundary %>% st_transform(2163)
+ms_buffer <- st_buffer(ms_boundary, dist = 80467)
+
+# Show the buffer to make sure it makes sense
+stroke_cent_planar <- stroke_cent_planar  %>% st_transform(2163)
+ggplot() + 
+    geom_sf(data = ms_boundary, color = "blue") + 
+    geom_sf(data = ms_buffer, fill = NA, color = "red") +
+    geom_sf(data = stroke_cent_planar) +
+    theme_void() 
+
+#filter centers
+stroke_cent_planar <- stroke_cent_planar %>% filter(st_intersects(geometry, ms_buffer, sparse = FALSE))
+table(stroke_cent_planar$State)
+
+#map filtered centers
+stroke_cent_planar <- stroke_cent_planar %>% st_transform(4326)
+leaflet() %>% 
+    addProviderTiles("CartoDB.Voyager") %>% 
+    addCircles(
+        data = stroke_cent_planar, 
+        radius = 6,
+        color = "darkgreen",
+        opacity = 0.6)
+
+#xx minute drive radius around centers
+tryLocation <- function(location) {
+    out <- tryCatch({
+        temp <- isoline(
+            poi = location,
+            # range is in seconds - we want 30 minutes, so multiply by 60
+            range = 60 * 60,
+            range_type = "time",
+            transport_mode = "car",
+            url_only = F,
+            optimize = "quality",
+            traffic = F,
+            aggregate = F
+        )
+        temp <- temp %>%
+            mutate(OrganizationID = point_id)
+        return(temp)},
+        
+        error = function(cond) {
+            message(paste("Hospital ID failed: ", point_id))
+            message(paste(cond))
+            # Choose a return value in case of error
+            return(NULL)},
+        
+        warning = function(cond) {
+            message(paste("Hospital ID caused a warning:", point_id))
+            message(paste(cond))
+            # Choose a return value in case of warning
+            return(NULL)
+        })    
+    return(out)
+}
+
+#### start here for modifying (line 224) to include throm capale or not or total or whatever
+#stroke_cent_planar[stroke_cent_planar$throm_capable == 1,]
+# Loop over points to make isochrones file
+# Using a timer to avoid rate limit errors (Status 429)
+stroke_cent_planar_temp <- stroke_cent_planar[stroke_cent_planar$CertificationProgram == "Advanced Primary Stroke Center          ",]
+isochrones <- NULL
+error_rows <- NULL
+set_key("WkL8HSQA9pCeNNwbg2OpvQHVr5uBpRb6mUzFzRvvL3w")
+for (i in 1:nrow(stroke_cent_planar_temp)) {
+    print(i)
+    # Get isochrones for that point
+    # Lately the rate limiting has been more aggressive, so do an aggressive second delay
+    # In the past I've used 0.15 seconds without issue but not right now
+    Sys.sleep(1)
+    # Filter to ith point
+    point_temp <- stroke_cent_planar_temp %>% filter(row_number() == i)
+    point_id <- point_temp$OrganizationID
+    
+    isochrones_temp <- tryLocation(point_temp)
+    
+    # If the point errored out save it
+    if (is.null(isochrones_temp)) {
+        error_rows <- bind_rows(error_rows, point_temp)
+    } else {
+        isochrones <- bind_rows(isochrones, isochrones_temp)    
+    }
+}
+rm(isochrones_temp, point_temp)
+
+#join dataframe to isochromes (not sf object)
+stroke_cent_planar_mp <- as.data.frame(stroke_cent_planar_temp) %>%
+    dplyr::select(-geometry)
+isochrones <- cbind(isochrones, stroke_cent_planar_mp)
+isochrones <- isochrones %>%
+    mutate(drive_time = range/60) %>%
+    dplyr::select(-range, -departure, -arrival, -id, -rank) %>%
+    dplyr::select(OrganizationId, drive_time, everything()) %>% 
+    arrange(State, City, OrganizationId, drive_time)
+
+#map isochrones
+leaflet() %>%   
+    addProviderTiles("CartoDB.Voyager") %>% 
+    addPolygons(
+        data = isochrones, 
+        fillColor = "forestgreen",
+        fillOpacity = 0.5, 
+        stroke = FALSE)
+
+#calculate overlap between census tract and isochrone
+# Make ctract shapefiles planar and valid, needed for sf computation
+svi_ctract_shapefile_planar <- st_as_sf(svi_ctract_shapefile, coords = c("lon", "lat")) %>% 
+    st_set_crs(4326)
+svi_ctract_shapefile_planar <- st_make_valid(svi_ctract_shapefile_planar)
+
+isochrones <- isochrones %>% st_transform(4326)
+isochrones <- st_make_valid(isochrones)
+
+isochrones_joined <- st_union(isochrones)
+isochrones_joined <- st_sf(iso_id = 1, geometry = isochrones_joined) %>% 
+    st_transform(4326)
+isochrones_joined <- st_make_valid(isochrones_joined)
+
+if (nrow(isochrones_joined) == 2) {
+  isochrones_joined = isochrones_joined[-1,]
+}
+
+leaflet() %>%   
+    addProviderTiles("CartoDB.Voyager") %>% 
+    addPolygons(
+        data = isochrones_joined, 
+        fillColor = "forestgreen",
+        fillOpacity = 0.5, 
+        stroke = FALSE)
+
+#save isochrone joined
+#st_write(isochrones_joined, dsn = "/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data/isochrones/60min_time_min_psc.shp",layer="name of output layer", driver="ESRI Shapefile")
+
+# Calculate area in all ctracts
+svi_ctract_shapefile_planar <- mutate(svi_ctract_shapefile_planar, bg_area = st_area(svi_ctract_shapefile_planar))
+
+# Calculate intersection - will take some minutes
+sf_use_s2(FALSE)
+intersect <- st_intersection(svi_ctract_shapefile_planar, isochrones_joined) %>% 
+        mutate(intersect_area = st_area(.)) %>%
+        dplyr::select(CTRACTID, intersect_area) %>% 
+        st_drop_geometry()
+
+# Merge intersection area by geoid
+svi_ctract_shapefile_planar <- left_join(svi_ctract_shapefile_planar, intersect, by = "CTRACTID")
+
+# Calculate overlap percent between block groups and isochrones
+svi_ctract_shapefile_planar <- svi_ctract_shapefile_planar %>% 
+    # If missing it's because it didn't overlap, so 0
+    mutate(intersect_area = ifelse(is.na(intersect_area), 0, intersect_area),
+        overlap = as.numeric(intersect_area/bg_area))
+
+# Summary of the overlap percents
+summary(svi_ctract_shapefile_planar$overlap)
+
+# map the percent overlap with isochrones for all stroke centers
+pal <- colorNumeric("Purples", domain = svi_ctract_shapefile_planar$overlap)
+leaflet() %>%
+    addProviderTiles("CartoDB.Positron") %>%
+    setView(
+        -86.7667415602124, 36.188530779087586,
+        zoom = 5) %>%
+    addPolygons(
+        data = svi_ctract_shapefile_planar , 
+        fillColor = ~pal(svi_ctract_shapefile_planar$overlap), 
+        fillOpacity = 1, 
+        weight = 0.5, 
+        smoothFactor = 0.2, 
+        stroke = TRUE,
+        color = "black") %>%
+    # Isochrone outlines
+    addPolygons(
+        data = isochrones_joined, 
+        fill = TRUE,
+        stroke = TRUE,
+        fillColor = "yellow",
+        fillOpacity = 0.05,
+        color = "red",
+        weight = 1.5) %>%
+    addLegend(pal = pal, 
+                        values = svi_ctract_shapefile_planar$overlap, 
+                        position = "bottomright", 
+                        title = "Intersection with isochrones",
+                        opacity = 1) %>%
+    addCircles(
+        data = stroke_cent_planar, 
+        radius = 6,
+        color = "darkgreen",
+        opacity = 0.6)
+
+#population in each ctract
+#census_api_key("92751b5d10e3948841cb66d921fd764f075d2ec5", install = TRUE, overwrite = TRUE)
+#View(listCensusApis())
+acs_raw <- get_acs(
+  geography = "tract", 
+  variables = c("NAME", "B01001_001E"),
+  state = "WI", 
+  year = 2018,
+  geometry = TRUE
+)
+
+demographics_ctract <- acs_raw %>% 
+    rename(name = NAME,
+                 population = estimate,
+           fips_ctract = GEOID) %>%
+    dplyr::select(fips_ctract, name, population)
+
+head(demographics_ctract)
+
+###percent pop w/i selected driving range
+ctract_overlap <- svi_ctract_shapefile_planar %>%
+    st_drop_geometry()
+colnames(ctract_overlap)[colnames(ctract_overlap) == "CTRACTID"] ="geoid"
+ctract_overlap <- as.data.frame(ctract_overlap)
+
+# Join data
+ctract <- left_join(ctract_overlap, demographics_ctract, by = c("geoid" = "fips_ctract"))
+
+# Calculate!
+sum(ctract$population)
+sum(ctract$stroke_freq_tot)
+#sum(ctract$stroke_freq_tot)/sum(ctract$population)*100000
+state_sums <- ctract %>% dplyr::select(geoid, overlap, population) %>%
+    summarize(within_total = sum(population * overlap),
+                        population_total = sum(population)) %>%
+    mutate(within_total_pct = within_total/population_total) %>%
+    ungroup()
+
+state_sums #all stroke centers (2018 pop) -> 83.49% 30 min, 92.04% 45 min, 96.87% 60 min; throm cap centers -> 79.37% 30 min, 89.77% 45 min, 95.05% 60 min
+
+##driving time between census tract centroid and stroke ready centers
+#need to break apart and rejoin to complete the matrix
+#mb_access_token("pk.eyJ1Ijoic2hhbGFkYSIsImEiOiJjbGpxNWt2MW8wMnJ4M2tscndqOGYxNWxyIn0.-ki49I7J13jmRBSfgHb9hg", install=TRUE)
+#temp1 <- stroke_cent_planar[1:20,]
+#temp2 <- stroke_cent_planar[21:40,]
+#temp3 <- stroke_cent_planar[41:60,]
+#temp4 <- stroke_cent_planar[61:80,]
+#temp5 <- stroke_cent_planar[81:100,]
+#temp6 <- stroke_cent_planar[101:119,]
+#times1 <- mb_matrix(svi_ctract_shapefile_planar, temp1, access_token = "pk.eyJ1Ijoic2hhbGFkYSIsImEiOiJjbGpxNWt2MW8wMnJ4M2tscndqOGYxNWxyIn0.-ki49I7J13jmRBSfgHb9hg")
+#times2 <- mb_matrix(svi_ctract_shapefile_planar, temp2, access_token = "pk.eyJ1Ijoic2hhbGFkYSIsImEiOiJjbGpxNWt2MW8wMnJ4M2tscndqOGYxNWxyIn0.-ki49I7J13jmRBSfgHb9hg")
+#times3 <- mb_matrix(svi_ctract_shapefile_planar, temp3, access_token = "pk.eyJ1Ijoic2hhbGFkYSIsImEiOiJjbGpxNWt2MW8wMnJ4M2tscndqOGYxNWxyIn0.-ki49I7J13jmRBSfgHb9hg")
+#times4 <- mb_matrix(svi_ctract_shapefile_planar, temp4, access_token = "pk.eyJ1Ijoic2hhbGFkYSIsImEiOiJjbGpxNWt2MW8wMnJ4M2tscndqOGYxNWxyIn0.-ki49I7J13jmRBSfgHb9hg")
+#times5 <- mb_matrix(svi_ctract_shapefile_planar, temp5, access_token = "pk.eyJ1Ijoic2hhbGFkYSIsImEiOiJjbGpxNWt2MW8wMnJ4M2tscndqOGYxNWxyIn0.-ki49I7J13jmRBSfgHb9hg")
+#times6 <- mb_matrix(svi_ctract_shapefile_planar, temp6, access_token = "pk.eyJ1Ijoic2hhbGFkYSIsImEiOiJjbGpxNWt2MW8wMnJ4M2tscndqOGYxNWxyIn0.-ki49I7J13jmRBSfgHb9hg")
+#remove(temp1,temp2,temp3,temp4,temp5,temp6)
+#times_total <- cbind(times1, times2)
+#times_total <- cbind(times_total, times3)
+#times_total <- cbind(times_total, times4)
+#times_total <- cbind(times_total, times5)
+#times_total <- cbind(times_total, times6)
+#write.csv(times_total, "/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data/strokecentroid_timecenter_fullmatrix_2018.csv", row.names = FALSE)
+#remove(times1, times2, times3, times4, times5, times6)
+times_total <- read.csv("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data/strokecentroid_timecenter_fullmatrix_2018.csv")
+min_time <- apply(times_total, 1, min)
+svi_ctract_shapefile_planar$time_min <- min_time
+dfSummary(svi_ctract_shapefile_planar$time_min)
+
+svi_ctract_shapefile_planar$time_min_cat <- cut(svi_ctract_shapefile_planar$time_min,
+                       breaks=c(-Inf,45,Inf))
+#svi_ctract_shapefile_planar$time_min_cat <- #factor(svi_ctract_shapefile_planar$time_min_cat, levels=c('(60, Inf]', '(-Inf,30]', '(30,45]', '(45,60]'))
+
+svi_ctract_shapefile_planar$time_min_throm_cat <- cut(svi_ctract_shapefile_planar$time_min_throm_capable,
+                       breaks=c(-Inf,45,Inf))
+
+svi_ctract_shapefile_planar$time_min_nthrom_cat <- cut(svi_ctract_shapefile_planar$time_min_throm_Ncapable,
+                       breaks=c(-Inf,45,Inf))
+
+#visualize 
+pal <- brewer.pal(n = 6, name = "OrRd")
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("time_min", palette = pal, border.col = "white", border.alpha = 0.1, breaks = c(0.5,15,30,45,60,180)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_shape(isochrones_joined) +
+  tm_polygons(col = "grey", alpha = 0.5, border.alpha = 0) +
+tm_shape(stroke_cent_planar) +
+  tm_dots(col = "black")
+
+```
+
+##visualize maps
+```{r}
+
+svi_ctract_shapefile <- st_as_sf(svi_ctract_shapefile)
+st_is_valid(svi_ctract_shapefile, reason = TRUE)
+svi_ctract_shapefile <- st_make_valid(svi_ctract_shapefile)
+st_is_valid(svi_ctract_shapefile, reason = TRUE)
+
+dnr_boundary <- st_as_sf(dnr_boundary)
+st_is_valid(dnr_boundary, reason = TRUE)
+dnr_boundary <- st_make_valid(dnr_boundary)
+st_is_valid(dnr_boundary, reason = TRUE)
+
+state_boundary <- st_as_sf(state_boundary)
+st_is_valid(state_boundary, reason = TRUE)
+state_boundary <- st_make_valid(state_boundary)
+st_is_valid(state_boundary, reason = TRUE)
+
+#visualize dnr_boundary on top of svi ctract
+tm_shape(svi_ctract_shapefile) +
+  tm_polygons(col="white", border.col = "grey", border.alpha = 1) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") 
+
+#visualize dnr_boundary on top of svi ctract w/ svi variable
+pal <- brewer.pal(n = 6, name = "OrRd")
+tm_shape(svi_ctract_shapefile) +
+  tm_polygons("RUCA_urban_code", palette = pal, border.col = "white", border.alpha = 0.1) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") 
+
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("RUCA_urban_code_ext", palette = pal, border.col = "white", border.alpha = 0.1) +
+  tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_shape(stroke_cent_planar[stroke_cent_planar$throm_capable == 0,]) +
+  tm_dots(col = "blue")
+
+
+##need to run drive time segment first to get isochrone polygons
+tm_shape(svi_ctract_shapefile) +
+  tm_polygons(col="white", border.col = "grey", border.alpha = 1) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_shape(isochrones_joined) +
+  tm_polygons(col = "blue", alpha = 0.3, border.alpha = 0)
+
+```
+
+###summarize the stroke cohort
+```{r}
+#convert ruca to 1/2
+svi_ctract_shapefile_planar$RUCA_urban_code_copy <- svi_ctract_shapefile_planar$RUCA_urban_code
+for (i in 1:nrow(svi_ctract_shapefile_planar)) {
+  if (svi_ctract_shapefile_planar[i,]$RUCA_urban_code < 4) {
+    svi_ctract_shapefile_planar[i,]$RUCA_urban_code <- 1 #urban
+  } else {
+    svi_ctract_shapefile_planar[i,]$RUCA_urban_code <- 2 #rural
+  }
+}
+svi_ctract_shapefile_planar$RUCA_urban_code <- as.character(svi_ctract_shapefile_planar$RUCA_urban_code)
+
+svi_ctract_shapefile_planar$RUCA_urban_code_ext <- svi_ctract_shapefile_planar$RUCA_urban_code_copy
+for (i in 1:nrow(svi_ctract_shapefile_planar)) {
+  if (svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 1 | svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 2 | svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 3) {
+    svi_ctract_shapefile_planar[i,]$RUCA_urban_code_ext <- 11 #metro
+  } 
+  if (svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 4 | svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 5 | svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 6) {
+    svi_ctract_shapefile_planar[i,]$RUCA_urban_code_ext <- 12 #micro
+  }
+  if (svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 7 | svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 8 | svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 9) {
+    svi_ctract_shapefile_planar[i,]$RUCA_urban_code_ext <- 13 #small town
+  }
+   if (svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 10 | svi_ctract_shapefile_planar[i,]$RUCA_urban_code_copy == 99){
+    svi_ctract_shapefile_planar[i,]$RUCA_urban_code_ext <- 14 #rural
+  }
+}
+svi_ctract_shapefile_planar$RUCA_urban_code_ext <- as.character(svi_ctract_shapefile_planar$RUCA_urban_code_ext)
+svi_ctract_shapefile_planar$RUCA_urban_code_ext <- as.factor(svi_ctract_shapefile_planar$RUCA_urban_code_ext)
+svi_ctract_shapefile_planar$RUCA_urban_code_ext <- factor(svi_ctract_shapefile_planar$RUCA_urban_code_ext, levels=c('11','12', '13', '14'))
+
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("RUCA_urban_code_copy", palette = pal, border.col = "white", border.alpha = 0.1, breaks = c(0,1,2,3,4,5,6,7,8,9,10,11)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black")
+
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("RUCA_urban_code_ext", palette = pal, border.col = "white", border.alpha = 0.1, breaks = c(10,11,12,13,14,15)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black")
+
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("RUCA_urban_code", border.col = "white", border.alpha = 0.1) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black")
+
+#read stroke mortality data in and summarize by ctract
+stroke_df <- read.csv("/Users/StephenHalada/OneDrive - mcw.edu/Stephen Halada/cohort/strokeDEATH2015_20_processed_geo.csv")
+stroke_df <- stroke_df[is.na(stroke_df$GEOID)==FALSE,]
+stroke_df$GEOID <- as.character(stroke_df$GEOID)
+stroke_df$GEOID <- substr(stroke_df$GEOID, 1, nchar(stroke_df$GEOID)-1)
+stroke_count <- data.frame(table(stroke_df$GEOID))
+colnames(stroke_count)[colnames(stroke_count) == "Var1"] ="CTRACTID"
+colnames(stroke_count)[colnames(stroke_count) == "Freq"] ="stroke_freq_tot"
+svi_ctract_shapefile_planar <- left_join(svi_ctract_shapefile_planar, stroke_count, by = "CTRACTID")
+svi_ctract_shapefile_planar[is.na(svi_ctract_shapefile_planar$stroke_freq_tot),]$stroke_freq_tot <- 0
+
+#visualize stroke mortality frequency
+pal <- brewer.pal(n = 6, name = "OrRd")
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("stroke_freq_tot", palette = pal, border.col = "white", border.alpha = 0.1, style = "fisher") +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") 
+
+tm_shape(svi_ctract_shapefile_planar[svi_ctract_shapefile_planar$COUNTY == "Milwaukee" | svi_ctract_shapefile_planar$COUNTY == "Waukesha",]) +
+  tm_polygons("stroke_freq_tot", palette = pal, border.col = "white", border.alpha = 0.1, style = "fisher") +
+  tm_shape(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) +
+  tm_borders(col = "black")
+
+#summarize mortality under 65 by ctract
+stroke_count <- data.frame(table(stroke_df[stroke_df$age_years < 65,]$GEOID))
+colnames(stroke_count)[colnames(stroke_count) == "Var1"] ="CTRACTID"
+colnames(stroke_count)[colnames(stroke_count) == "Freq"] ="stroke_freq_under65"
+svi_ctract_shapefile_planar <- left_join(svi_ctract_shapefile_planar, stroke_count, by = "CTRACTID")
+svi_ctract_shapefile_planar[is.na(svi_ctract_shapefile_planar$stroke_freq_under65),]$stroke_freq_under65 <- 0
+
+#visualize youngest cohort
+pal <- brewer.pal(n = 6, name = "OrRd")
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("stroke_freq_under65", palette = pal, border.col = "white", border.alpha = 0.1, style = "fisher") +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") 
+
+tm_shape(svi_ctract_shapefile_planar[svi_ctract_shapefile_planar$COUNTY == "Milwaukee" | svi_ctract_shapefile_planar$COUNTY == "Waukesha",]) +
+  tm_polygons("stroke_freq_under65", palette = pal, border.col = "white", border.alpha = 0.1, style = "fisher") +
+  tm_shape(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) +
+  tm_borders(col = "black")
+
+#summarize the cohort
+dfSummary(stroke_df$age_years)
+median(stroke_df$age_years)
+quantile(stroke_df$age_years, 0.25)
+quantile(stroke_df$age_years, 0.75)
+
+dfSummary(stroke_df[stroke_df$age_years < 45,]$age_years)
+median(stroke_df[stroke_df$age_years < 45,]$age_years)
+quantile(stroke_df[stroke_df$age_years < 45,]$age_years, 0.25)
+quantile(stroke_df[stroke_df$age_years < 45,]$age_years, 0.75)
+
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$age_years)
+median(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$age_years)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$age_years, 0.25)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$age_years, 0.75)
+
+dfSummary(stroke_df[stroke_df$age_years < 65,]$age_years)
+median(stroke_df[stroke_df$age_years < 65,]$age_years)
+quantile(stroke_df[stroke_df$age_years < 65,]$age_years, 0.25)
+quantile(stroke_df[stroke_df$age_years < 65,]$age_years, 0.75)
+
+dfSummary(stroke_df[stroke_df$age_years > 64,]$age_years)
+median(stroke_df[stroke_df$age_years > 64,]$age_years)
+quantile(stroke_df[stroke_df$age_years > 64,]$age_years, 0.25)
+quantile(stroke_df[stroke_df$age_years > 64,]$age_years, 0.75)
+
+dfSummary(stroke_df$sex)
+dfSummary(stroke_df[stroke_df$age_years < 45,]$sex)
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$sex)
+dfSummary(stroke_df[stroke_df$age_years > 64,]$sex)
+dfSummary(stroke_df[stroke_df$age_years < 65,]$sex)
+x <- c(5024,8078,897,672)
+dim(x) <- c(2,2)
+chisq.test(x)
+
+dfSummary(stroke_df$marital)
+dfSummary(stroke_df[stroke_df$age_years < 45,]$marital)
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$marital)
+dfSummary(stroke_df[stroke_df$age_years > 64,]$marital)
+
+dfSummary(stroke_df$education)
+dfSummary(stroke_df[stroke_df$age_years < 45,]$education)
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$education)
+dfSummary(stroke_df[stroke_df$age_years > 64,]$education)
+
+dfSummary(stroke_df$race_eth_nm)
+dfSummary(stroke_df[stroke_df$age_years < 45,]$race_eth_nm)
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$race_eth_nm)
+dfSummary(stroke_df[stroke_df$age_years > 64,]$race_eth_nm)
+dfSummary(stroke_df[stroke_df$age_years < 65,]$race_eth_nm)
+x <- c(12265,837,1124,445)
+dim(x) <- c(2,2)
+chisq.test(x)
+
+dfSummary(stroke_df$tribal_member_yn)
+dfSummary(stroke_df[stroke_df$age_years < 45,]$tribal_member_yn)
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$tribal_member_yn)
+dfSummary(stroke_df[stroke_df$age_years > 64,]$tribal_member_yn)
+
+temp <- data.frame(svi_ctract_shapefile_planar$CTRACTID,svi_ctract_shapefile_planar$RPL_THEME1,svi_ctract_shapefile_planar$RPL_THEME2,svi_ctract_shapefile_planar$RPL_THEME3,svi_ctract_shapefile_planar$RPL_THEME4,svi_ctract_shapefile_planar$RPL_THEMES,svi_ctract_shapefile_planar$time_min, svi_ctract_shapefile_planar$RUCA_urban_code, svi_ctract_shapefile_planar$RUCA_urban_code_copy)
+colnames(temp)[colnames(temp) == "svi_ctract_shapefile_planar.CTRACTID"] ="GEOID"
+colnames(temp)[colnames(temp) == "svi_ctract_shapefile_planar.RPL_THEME1"] ="RPL_THEME1"
+colnames(temp)[colnames(temp) == "svi_ctract_shapefile_planar.RPL_THEME2"] ="RPL_THEME2"
+colnames(temp)[colnames(temp) == "svi_ctract_shapefile_planar.RPL_THEME3"] ="RPL_THEME3"
+colnames(temp)[colnames(temp) == "svi_ctract_shapefile_planar.RPL_THEME4"] ="RPL_THEME4"
+colnames(temp)[colnames(temp) == "svi_ctract_shapefile_planar.RPL_THEMES"] ="RPL_THEMES"
+colnames(temp)[colnames(temp) == "svi_ctract_shapefile_planar.time_min"] ="time_min"
+colnames(temp)[colnames(temp) == "svi_ctract_shapefile_planar.RUCA_urban_code"] ="RUCA_urban_code_urb_rur"
+colnames(temp)[colnames(temp) == "svi_ctract_shapefile_planar.RUCA_urban_code_copy"] ="RUCA_urban_code"
+stroke_df <- left_join(stroke_df, temp, by="GEOID")
+
+dfSummary(stroke_df$RPL_THEME1)
+median(stroke_df$RPL_THEME1, na.rm=TRUE)
+quantile(stroke_df$RPL_THEME1, 0.25, na.rm=TRUE)
+quantile(stroke_df$RPL_THEME1, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 45,]$RPL_THEME1)
+median(stroke_df[stroke_df$age_years < 45,]$RPL_THEME1, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEME1, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEME1, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME1)
+median(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME1, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME1, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME1, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 64,]$RPL_THEME1)
+median(stroke_df[stroke_df$age_years > 64,]$RPL_THEME1, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 64,]$RPL_THEME1, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 64,]$RPL_THEME1, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 65,]$RPL_THEME1)
+median(stroke_df[stroke_df$age_years < 65,]$RPL_THEME1, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEME1, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEME1, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df$RPL_THEME2)
+median(stroke_df$RPL_THEME2, na.rm=TRUE)
+quantile(stroke_df$RPL_THEME2, 0.25, na.rm=TRUE)
+quantile(stroke_df$RPL_THEME2, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 45,]$RPL_THEME2)
+median(stroke_df[stroke_df$age_years < 45,]$RPL_THEME2, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEME2, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEME2, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME2)
+median(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME2, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME2, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME2, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 64,]$RPL_THEME2)
+median(stroke_df[stroke_df$age_years > 65,]$RPL_THEME2, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 65,]$RPL_THEME2, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 65,]$RPL_THEME2, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 64,]$RPL_THEME2)
+median(stroke_df[stroke_df$age_years < 65,]$RPL_THEME2, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEME2, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEME2, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df$RPL_THEME3)
+median(stroke_df$RPL_THEME3, na.rm=TRUE)
+quantile(stroke_df$RPL_THEME3, 0.25, na.rm=TRUE)
+quantile(stroke_df$RPL_THEME3, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 45,]$RPL_THEME3)
+median(stroke_df[stroke_df$age_years < 45,]$RPL_THEME3, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEME3, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEME3, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME3)
+median(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME3, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME3, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME3, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 64,]$RPL_THEME3)
+median(stroke_df[stroke_df$age_years > 65,]$RPL_THEME3, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 65,]$RPL_THEME3, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 65,]$RPL_THEME3, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 64,]$RPL_THEME3)
+median(stroke_df[stroke_df$age_years < 65,]$RPL_THEME3, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEME3, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEME3, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df$RPL_THEME4)
+median(stroke_df$RPL_THEME4, na.rm=TRUE)
+quantile(stroke_df$RPL_THEME4, 0.25, na.rm=TRUE)
+quantile(stroke_df$RPL_THEME4, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 45,]$RPL_THEME4)
+median(stroke_df[stroke_df$age_years < 45,]$RPL_THEME4, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEME4, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEME4, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME4)
+median(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME4, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME4, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEME4, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 64,]$RPL_THEME4)
+median(stroke_df[stroke_df$age_years > 64,]$RPL_THEME4, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 64,]$RPL_THEME4, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 64,]$RPL_THEME4, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 64,]$RPL_THEME4)
+median(stroke_df[stroke_df$age_years < 65,]$RPL_THEME4, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEME4, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEME4, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df$RPL_THEMES)
+median(stroke_df$RPL_THEMES, na.rm=TRUE)
+quantile(stroke_df$RPL_THEMES, 0.25, na.rm=TRUE)
+quantile(stroke_df$RPL_THEMES, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 45,]$RPL_THEMES)
+median(stroke_df[stroke_df$age_years < 45,]$RPL_THEMES, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEMES, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$RPL_THEMES, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEMES)
+median(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEMES, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEMES, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RPL_THEMES, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 64,]$RPL_THEMES)
+median(stroke_df[stroke_df$age_years > 64,]$RPL_THEMES, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 64,]$RPL_THEMES, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 64,]$RPL_THEMES, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 65,]$RPL_THEMES)
+median(stroke_df[stroke_df$age_years < 65,]$RPL_THEMES, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEMES, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$RPL_THEMES, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df$time_min)
+median(stroke_df$time_min, na.rm=TRUE)
+quantile(stroke_df$time_min, 0.25, na.rm=TRUE)
+quantile(stroke_df$time_min, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 45,]$time_min)
+median(stroke_df[stroke_df$age_years < 45,]$time_min, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$time_min, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 45,]$time_min, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$time_min)
+median(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$time_min, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$time_min, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$time_min, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years > 64,]$time_min)
+median(stroke_df[stroke_df$age_years > 65,]$time_min, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 65,]$time_min, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years > 65,]$time_min, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df[stroke_df$age_years < 64,]$time_min)
+median(stroke_df[stroke_df$age_years < 65,]$time_min, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$time_min, 0.25, na.rm=TRUE)
+quantile(stroke_df[stroke_df$age_years < 65,]$time_min, 0.75, na.rm=TRUE)
+
+dfSummary(stroke_df$RUCA_urban_code)
+dfSummary(stroke_df[stroke_df$age_years < 45,]$RUCA_urban_code)
+dfSummary(stroke_df[stroke_df$age_years > 44 & stroke_df$age_years < 65,]$RUCA_urban_code)
+dfSummary(stroke_df[stroke_df$age_years > 64,]$RUCA_urban_code)
+dfSummary(stroke_df[stroke_df$age_years < 65,]$RUCA_urban_code)
+x <- c(8544,4558,1125, 444)
+dim(x) <- c(2,2)
+chisq.test(x)
+
+wilcox.test(stroke_df[stroke_df$age_years >64,]$age_years, stroke_df[stroke_df$age_years <65,]$age_years)
+wilcox.test(stroke_df[stroke_df$age_years >64,]$RPL_THEMES, stroke_df[stroke_df$age_years <65,]$RPL_THEMES)
+wilcox.test(stroke_df[stroke_df$age_years >64,]$RPL_THEME1, stroke_df[stroke_df$age_years <65,]$RPL_THEME1)
+wilcox.test(stroke_df[stroke_df$age_years >64,]$RPL_THEME2, stroke_df[stroke_df$age_years <65,]$RPL_THEME2)
+wilcox.test(stroke_df[stroke_df$age_years >64,]$RPL_THEME3, stroke_df[stroke_df$age_years <65,]$RPL_THEME3)
+wilcox.test(stroke_df[stroke_df$age_years >64,]$RPL_THEME4, stroke_df[stroke_df$age_years <65,]$RPL_THEME4)
+wilcox.test(stroke_df[stroke_df$age_years >64,]$time_min, stroke_df[stroke_df$age_years <65,]$time_min)
+
+
+###split demographics by residential ctract within 45 min of SC or not
+#merge SC drive distance to stroke_df by GEOID (stroke_df) = CTRACTID (shapefile)
+stroke_df <- left_join(stroke_df, svi_ctract_shapefile_planar[ , c("CTRACTID", "time_min", "time_min_throm_capable", "RUCA_urban_code_ext")], by=c('GEOID'='CTRACTID'))
+stroke_df <- stroke_df[1:(length(stroke_df)-1)]
+#categorize by over/under 45 time_min
+#stroke_df$time_min_cat <- cut(stroke_df$time_min,
+#                       breaks=c(-Inf,45,Inf))
+#demo by category
+dfSummary(stroke_df[stroke_df$time_min_throm_capable < 45,]$RUCA_urban_code_ext)
+dfSummary(stroke_df[stroke_df$time_min_throm_capable > 45,]$RUCA_urban_code_ext)
+dfSummary(stroke_df$not_hispanic)
+median(stroke_df[stroke_df$time_min_throm_capable > 45,]$time_min)
+quantile(stroke_df[stroke_df$time_min_throm_capable > 45,]$time_min, 0.25)
+quantile(stroke_df[stroke_df$time_min_throm_capable > 45,]$time_min, 0.75)
+test <- stroke_df[stroke_df$time_min_throm_capable > 45,]$time_min
+write.csv(test, 'test.csv')
+x <- c(7969  ,920 ,5647  ,135 )
+dim(x) <- c(2,2)
+chisq.test(x)
+
+```
+
+##run through here on new environment
+
+##ASF total
+```{r}
+
+idw <- raster("/Users/StephenHalada/OneDrive - mcw.edu/Stephen Halada/bg19rp_stkm_wi_cnt30.img")
+
+##visualize idw raster
+my_pal <- c('#456fb4','#91bfdb','#eeeeee','#fef090','#ef8a62','#d73027')
+bbox_new <- st_bbox(dnr_boundary) # current bounding box
+xrange <- bbox_new$xmax - bbox_new$xmin # range of x values
+yrange <- bbox_new$ymax - bbox_new$ymin # range of y values
+bbox_new[1] <- bbox_new[1] - (0.1 * xrange) # xmin - left
+# bbox_new[3] <- bbox_new[3] + (0.5 * xrange) # xmax - right
+# bbox_new[2] <- bbox_new[2] - (0.5 * yrange) # ymin - bottom
+#bbox_new[4] <- bbox_new[4] + (0.5 * yrange) # ymax - top
+bbox_new <- bbox_new %>%  # take the bounding box ...
+  st_as_sfc() # ... and make it a sf polygon
+#tiff("smr_ctract.tiff", units="in", width=7, height=7, res=300)
+tm_shape(idw, bbox=bbox_new) +
+  tm_raster(title="Mortality Ratio (SMR)",
+            breaks = c(0.34, 0.50, 0.85, 1.15, 1.40, 2.05, 5.87),
+            palette = my_pal) +
+tm_shape(dnr_boundary, bbox=bbox_new) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.title.size=1,
+  legend.position = c("right","top")
+)
+#dev.off()
+
+my_pal <- c('#456fb4','#91bfdb','#eeeeee','#fef090','#ef8a62','#d73027')
+bbox_new <- st_bbox(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) # current bounding box
+xrange <- bbox_new$xmax - bbox_new$xmin # range of x values
+yrange <- bbox_new$ymax - bbox_new$ymin # range of y values
+#bbox_new[1] <- bbox_new[1] - (0.1 * xrange) # xmin - left
+# bbox_new[3] <- bbox_new[3] + (0.5 * xrange) # xmax - right
+# bbox_new[2] <- bbox_new[2] - (0.5 * yrange) # ymin - bottom
+#bbox_new[4] <- bbox_new[4] + (0.5 * yrange) # ymax - top
+#bbox_new <- bbox_new %>%  # take the bounding box ...
+#  st_as_sfc() # ... and make it a sf polygon
+tm_shape(idw, bbox=bbox_new) +
+  tm_raster(title="Mortality Rate (SMR)",
+            breaks = c(0.34, 0.50, 0.85, 1.15, 1.40, 2.05, 5.87),
+            palette = my_pal) +
+tm_shape(dnr_boundary, bbox=bbox_new) +
+  tm_borders(col = "black") 
+
+##calculate average idw value per census tract for each ctract
+# Extract raster values to list object
+r.vals <- raster::extract(idw, svi_ctract_shapefile_planar)
+# Use list apply to calculate mean for each polygon
+r.vals <- lapply(r.vals,na.omit)
+r.mean <- lapply(r.vals, FUN=mean)
+# Join mean values to polygon data
+svi_ctract_shapefile_planar$idw <- r.mean
+svi_ctract_shapefile_planar$idw <- as.numeric(svi_ctract_shapefile_planar$idw)
+
+#visualize idw by ctract
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("idw", 
+              title="Mortality Rate (SMR)",
+              palette = my_pal, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0.44, 0.50, 0.85, 1.15, 1.40, 2.05, 3.82)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.title.size=1,
+  legend.position = c("right","top")
+)
+
+##visualize idw by ctract by drive distance
+eve1 <- c('#d7c8c8','#d78282','#d75050','#d73027')
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("idw", 
+              title="Mortality Rate (SIR)",
+              palette = eve1, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0.44, 0.90, 1.30, 1.90, 3.82)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+eve2 <- c('#c8dfe5','#8fc2e2','#538fc6','#3362a0')
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("time_min", 
+              palette = eve2, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(0.5, 30, 45, 60, 180)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black")
+
+svi_ctract_shapefile_planar$eve_drive <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar)) {
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 1.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 2.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 3.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 4.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 5.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 6.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 7.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 8.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 9.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 10.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 11.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 12.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 13.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 14.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 15.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 16.5
+  }
+}
+
+eve <- c('#762A84','#B08EC4','#F5F67A','#E6E600','#B08EC4','#E7D5E9','#FFFFBE','#F5F67A','#7FBF7B','#D9F1D3','#FDBF85','#FD8D3D','#1A9850','#7FBF7B','#FD8D3D','#F16913')
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("eve_drive", 
+              palette = eve, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+) +
+tm_shape(isochrones_joined) +
+  tm_polygons(col = "grey", alpha = 0.5, border.alpha = 0) +
+tm_shape(stroke_cent_planar) +
+  tm_dots(col = "black")
+
+
+##percent of WI population in orange (drive distance >30 min w/ high stroke mortality rate)
+#percent pop in rate-by-drive 10.5,14.5,11.5,12.5,15.5,16.5 -> drive time over 45 minutes and SMR over 1
+ctract_overlap <- svi_ctract_shapefile_planar %>% dplyr::filter(eve_drive==11.5 | eve_drive==12.5 | eve_drive==15.5 | eve_drive==16.5) %>%
+    st_drop_geometry()
+ctract_overlap <- as.data.frame(ctract_overlap)
+
+# Join data
+ctract <- left_join(ctract_overlap, demographics_ctract, by = c("CTRACTID" = "fips_ctract"))
+
+# Total population in "high-risk" ctracts via rate-by-drive model
+sum(ctract$population) #349,181 people living in these areas
+sum(ctract$population)/sum(demographics_ctract$population) #6% of the population
+sum(ctract$stroke_freq_tot) #1251 total, 208 stroke deaths per year in these areas
+sum(ctract$stroke_freq_tot)/sum(ctract$population)*100000/6 #~60 deaths/1000000 for these regions compared to near 40 for the state average
+
+##visualize idw by ctract by SVI
+eve1 <- c('#d7c8c8','#d78282','#d75050','#d73027')
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("idw", 
+              title="Mortality Rate (SIR)",
+              palette = eve1, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0.44, 0.90, 1.30, 1.90, 3.82)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+eve1 <- c('#d7c8c8','#d78282','#d75050','#d73027')
+tm_shape(svi_ctract_shapefile_planar[svi_ctract_shapefile_planar$COUNTY == "Milwaukee" | svi_ctract_shapefile_planar$COUNTY == "Waukesha",]) +
+  tm_polygons("RPL_THEME1", 
+              palette = eve1, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0, 0.25, 0.5, 0.75, 1)
+              ) +
+tm_shape(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+eve2 <- c('#c8dfe5','#8fc2e2','#538fc6','#3362a0')
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("RPL_THEMES", 
+              palette = eve2, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black")
+
+svi_ctract_shapefile_planar$eve_svi <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar)) {
+  if (is.na(svi_ctract_shapefile_planar[i,]$RPL_THEMES)==FALSE) {  
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 1.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 2.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 3.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 4.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 5.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 6.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 7.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 8.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 9.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 10.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 11.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 12.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 13.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 14.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 15.5
+    }
+    if (svi_ctract_shapefile_planar[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar[i,]$eve_svi <- 16.5
+    }
+  }
+}
+
+#eve with svi
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("eve_svi", 
+              palette = eve, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+)
+
+tm_shape(svi_ctract_shapefile_planar[svi_ctract_shapefile_planar$COUNTY == "Milwaukee" | svi_ctract_shapefile_planar$COUNTY == "Waukesha",]) +
+  tm_polygons("eve_svi", 
+              palette = eve, 
+              border.col = "black", 
+              border.alpha = 0.3,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+)
+
+#regression
+lm1 <- lm(time_min~ RUCA_urban_code + RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4, data = svi_ctract_shapefile_planar)
+summary(lm1)
+
+lm1.1 <- lm(RPL_THEMES ~ RUCA_urban_code_ext, data = svi_ctract_shapefile_planar)
+summary(lm1.1)
+dfSummary(svi_ctract_shapefile_planar[svi_ctract_shapefile_planar$RUCA_urban_code_ext == "11",]$RPL_THEMES)
+dfSummary(svi_ctract_shapefile_planar[svi_ctract_shapefile_planar$RUCA_urban_code_ext == "12",]$RPL_THEMES)
+dfSummary(svi_ctract_shapefile_planar[svi_ctract_shapefile_planar$RUCA_urban_code_ext == "13",]$RPL_THEMES)
+dfSummary(svi_ctract_shapefile_planar[svi_ctract_shapefile_planar$RUCA_urban_code_ext == "14",]$RPL_THEMES)
+wilcox.test(RPL_THEMES~RUCA_urban_code,data=svi_ctract_shapefile_planar)
+
+
+lm2 <- lm(idw~ RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4 + time_min_cat + RUCA_urban_code_ext, data = svi_ctract_shapefile_planar)
+summary(lm2)
+
+#idw~
+
+#idw~ EP_POV150 + EP_UNEMP + EP_HBURD + EP_NOHSDP + EP_UNINSUR + EP_AGE65 + EP_AGE17 + EP_DISABL + EP_SNGPNT + EP_LIMENG + EP_MINRTY + EP_MUNIT + EP_MOBILE + EP_CROWD + EP_NOVEH + EP_GROUPQ + time_min + RUCA_urban_code + time_min:RUCA_urban_code + time_min:RPL_THEME2 + time_min:RPL_THEME3 + time_min:RPL_THEME4
+
+##spatial regression
+#residuals  and morans test for spatial correlation
+svi_ctract_shapefile_planar <- svi_ctract_shapefile_planar[is.na(svi_ctract_shapefile_planar$RPL_THEMES) == FALSE,]
+svi_ctract_shapefile_planar <- svi_ctract_shapefile_planar %>%
+  mutate(olsresid = resid(lm4))
+temp1 <- poly2nb(svi_ctract_shapefile_planar, queen=T)
+temp2 <- nb2listw(temp1, style="W", zero.policy=TRUE)
+moran.plot(as.numeric(scale(svi_ctract_shapefile_planar$idw)), listw=temp2, 
+           xlab="Standardized SMR", 
+           ylab="Neighbors Standardized SMR",
+           main=c("Moran Scatterplot for SMR", "in WI") )
+moran.mc(svi_ctract_shapefile_planar$idw, temp2, nsim=999)
+
+#spatial lag -> !!interaction terms has been dropped with consideration of global interaction test within spatial consideration (i.e. Wald test statistic)
+fit_lag <- lagsarlm(idw~ RPL_THEMES + time_min_cat + RUCA_urban_code_ext, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_lag)
+fit_lag_effects <- impacts(fit_lag, listw = temp2, R = 999)
+fit_lag_effects
+summary(fit_lag_effects, zstats = TRUE, short = TRUE)
+AIC(fit_lag)
+
+#spatial error
+fit_err <- errorsarlm(idw~ RPL_THEMES + time_min_cat + RUCA_urban_code_ext, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_err)
+AIC(fit_err) #AIC is lower so use this one
+
+#la grange multiplier
+lm.LMtests(lm2, listw = temp2, test = "all",  zero.policy=TRUE)
+
+#multicollinearity
+vif(lm2)
+temp_corr <- svi_ctract_shapefile_planar[,c("RPL_THEME1","RPL_THEME2","RPL_THEME3","RPL_THEME4","time_min","RUCA_urban_code_ext")]
+temp_corr <- temp_corr %>% st_drop_geometry()
+temp_corr$RUCA_urban_code_ext <- as.numeric(temp_corr$RUCA_urban_code_ext)
+cor(temp_corr)
+
+#univariate using spatial error
+fit_err_uni <- errorsarlm(idw~ RPL_THEMES, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RPL_THEME1, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RPL_THEME2, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RPL_THEME3, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RPL_THEME4, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ time_min, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RUCA_urban_code, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_err_uni)
+
+
+```
+
+##ASF under 65
+```{r}
+
+idw <- raster("/Users/StephenHalada/OneDrive - mcw.edu/Stephen Halada/bg19rp_stkm_wi_cnt15_und65.img")
+
+##visualize idw raster
+my_pal <- c('#456fb4','#91bfdb','#eeeeee','#fef090','#ef8a62','#d73027')
+bbox_new <- st_bbox(dnr_boundary) # current bounding box
+xrange <- bbox_new$xmax - bbox_new$xmin # range of x values
+yrange <- bbox_new$ymax - bbox_new$ymin # range of y values
+bbox_new[1] <- bbox_new[1] - (0.1 * xrange) # xmin - left
+bbox_new[3] <- bbox_new[3] + (0.15 * xrange) # xmax - right
+# bbox_new[2] <- bbox_new[2] - (0.5 * yrange) # ymin - bottom
+#bbox_new[4] <- bbox_new[4] + (0.5 * yrange) # ymax - top
+bbox_new <- bbox_new %>%  # take the bounding box ...
+  st_as_sfc() # ... and make it a sf polygon
+#tiff("test2.tiff", units="in", width=7, height=7, res=300)
+tm_shape(idw, bbox=bbox_new) +
+  tm_raster(title="Premature (age<65)\nMortality Rate (SMR)",
+            breaks = c(0.20, 0.65, 0.85, 1.15, 1.40, 2.8, 7),
+            palette = my_pal) +
+tm_shape(dnr_boundary, bbox=bbox_new) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.title.size=1,
+  legend.position = c("right","top")
+)
+#dev.off()
+
+bbox_new <- st_bbox(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) # current bounding box
+xrange <- bbox_new$xmax - bbox_new$xmin # range of x values
+yrange <- bbox_new$ymax - bbox_new$ymin # range of y values
+#bbox_new[1] <- bbox_new[1] - (0.1 * xrange) # xmin - left
+# bbox_new[3] <- bbox_new[3] + (0.5 * xrange) # xmax - right
+# bbox_new[2] <- bbox_new[2] - (0.5 * yrange) # ymin - bottom
+#bbox_new[4] <- bbox_new[4] + (0.5 * yrange) # ymax - top
+#bbox_new <- bbox_new %>%  # take the bounding box ...
+#  st_as_sfc() # ... and make it a sf polygon
+tm_shape(idw, bbox=bbox_new) +
+  tm_raster(title="Mortality Rate (SIR)",
+            breaks = c(0.30, 0.65, 0.85, 1.15, 1.40, 2.8, 6.7),
+            palette = my_pal) +
+tm_shape(dnr_boundary, bbox=bbox_new) +
+  tm_borders(col = "black") 
+
+##calculate average idw value per census tract for each ctract
+# Extract raster values to list object
+svi_ctract_shapefile_planar_und65 <- svi_ctract_shapefile_planar
+r.vals <- raster::extract(idw, svi_ctract_shapefile_planar_und65)
+# Use list apply to calculate mean for each polygon
+r.vals <- lapply(r.vals,na.omit)
+r.mean <- lapply(r.vals, FUN=mean)
+# Join mean values to polygon data
+svi_ctract_shapefile_planar_und65$idw <- r.mean
+svi_ctract_shapefile_planar_und65$idw <- as.numeric(svi_ctract_shapefile_planar_und65$idw)
+
+#visualize idw by ctract
+tm_shape(svi_ctract_shapefile_planar_und65) +
+  tm_polygons("idw", 
+              title="Mortality Rate (SIR)",
+              palette = my_pal, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0.30, 0.65, 0.85, 1.15, 1.40, 2.8, 6.7)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+##visualize idw by ctract by drive distance
+eve1 <- c('#FFFFFF','#d7c8c8','#d78282','#d73027')
+tm_shape(svi_ctract_shapefile_planar_und65) +
+  tm_polygons("idw", 
+              title="Mortality Rate (SIR)",
+              palette = eve1, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0.3, 0.90, 1.30, 1.90, 6.7)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+eve2 <- c('#c8dfe5','#8fc2e2','#538fc6','#3362a0')
+tm_shape(svi_ctract_shapefile_planar_und65) +
+  tm_polygons("time_min", 
+              palette = eve2, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(0.5, 30, 45, 60, 180)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black")
+
+svi_ctract_shapefile_planar_und65$eve_drive <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar_und65)) {
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min < 30.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 1.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 30.01 && svi_ctract_shapefile_planar_und65[i,]$time_min < 45.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 2.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 45.01 && svi_ctract_shapefile_planar_und65[i,]$time_min < 60.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 3.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 60.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 4.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min < 30.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_und65[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 5.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 30.01 && svi_ctract_shapefile_planar_und65[i,]$time_min < 45.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_und65[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 6.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 45.01 && svi_ctract_shapefile_planar_und65[i,]$time_min < 60.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_und65[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 7.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 60.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_und65[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 8.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min < 30.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 9.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 30.01 && svi_ctract_shapefile_planar_und65[i,]$time_min < 45.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 10.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 45.01 && svi_ctract_shapefile_planar_und65[i,]$time_min < 60.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 11.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 60.01 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 12.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min < 30.01 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 13.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 30.01 && svi_ctract_shapefile_planar_und65[i,]$time_min < 45.01 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 14.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 45.01 && svi_ctract_shapefile_planar_und65[i,]$time_min < 60.01 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 15.5
+  }
+  if (svi_ctract_shapefile_planar_und65[i,]$time_min > 60.01 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar_und65[i,]$eve_drive <- 16.5
+  }
+}
+
+eve <- c('#762A84','#B08EC4','#F5F67A','#E6E600','#B08EC4','#E7D5E9','#FFFFBE','#F5F67A','#7FBF7B','#D9F1D3','#FDBF85','#FD8D3D','#1A9850','#7FBF7B','#FD8D3D','#F16913')
+tm_shape(svi_ctract_shapefile_planar_und65) +
+  tm_polygons("eve_drive", 
+              palette = eve, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+) +
+tm_shape(isochrones_joined) +
+  tm_polygons(col = "grey", alpha = 0.5, border.alpha = 0) +
+tm_shape(stroke_cent_planar) +
+  tm_dots(col = "black")
+
+##visualize idw by ctract by SVI
+eve1 <- c('#d7c8c8','#d78282','#d75050','#d73027')
+tm_shape(svi_ctract_shapefile_planar_und65) +
+  tm_polygons("idw", 
+              title="Mortality Rate (SIR)",
+              palette = eve1, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0.3, 0.90, 1.30, 1.90, 6.7)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+eve1 <- c('#d7c8c8','#d78282','#d75050','#d73027')
+tm_shape(svi_ctract_shapefile_planar_und65[svi_ctract_shapefile_planar_und65$COUNTY == "Milwaukee" | svi_ctract_shapefile_planar_und65$COUNTY == "Waukesha",]) +
+  tm_polygons("RPL_THEME1", 
+              palette = eve1, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0, 0.25, 0.5, 0.75, 1)
+              ) +
+tm_shape(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+eve2 <- c('#c8dfe5','#8fc2e2','#538fc6','#3362a0')
+tm_shape(svi_ctract_shapefile_planar_und65) +
+  tm_polygons("RPL_THEMES", 
+              palette = eve2, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black")
+
+svi_ctract_shapefile_planar_und65$eve_svi <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar_und65)) {
+  if (is.na(svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES)==FALSE) {  
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar_und65[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 1.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar_und65[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 2.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar_und65[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 3.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar_und65[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 4.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_und65[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 5.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_und65[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 6.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_und65[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 7.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_und65[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 8.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 9.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 10.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 11.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar_und65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 12.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 13.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 14.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 15.5
+    }
+    if (svi_ctract_shapefile_planar_und65[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar_und65[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar_und65[i,]$eve_svi <- 16.5
+    }
+  }
+}
+
+#tiff("test.tiff", units="in", width=5, height=5, res=300)
+#eve with svi
+tm_shape(svi_ctract_shapefile_planar_und65) +
+  tm_polygons("eve_svi", 
+              palette = eve, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+)
+#dev.off()
+
+#tiff("test1.tiff", units="in", width=5, height=5, res=300)
+tm_shape(svi_ctract_shapefile_planar_und65[svi_ctract_shapefile_planar_und65$COUNTY == "Milwaukee" | svi_ctract_shapefile_planar_und65$COUNTY == "Waukesha",]) +
+  tm_polygons("eve_svi", 
+              palette = eve, 
+              border.col = "black", 
+              border.alpha = 0.3,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+)
+#dev.off()
+
+svi_ctract_shapefile_planar_und65$time_min_cat <- cut(svi_ctract_shapefile_planar_und65$time_min,
+                       breaks=c(-Inf,30,Inf))
+svi_ctract_shapefile_planar_und65$time_min_cat <- factor(svi_ctract_shapefile_planar_und65$time_min_cat, levels=c('(60, Inf]', '(-Inf,15]','(15,30]', '(30,45]', '(45,60]'))
+
+##percent of WI population in orange (SVI >0.5 w/ high stroke mortality rate)
+#percent pop in rate-by-SVI 10.5,14.5,11.5,12.5,15.5,16.5 
+ctract_overlap <- svi_ctract_shapefile_planar_und65 %>% dplyr::filter(eve_svi==11.5 | eve_svi==12.5 | eve_svi==15.5 | eve_svi==16.5) %>%
+    st_drop_geometry()
+ctract_overlap <- as.data.frame(ctract_overlap)
+svi_ctract_shapefile_planar_und65[is.na(svi_ctract_shapefile_planar_und65$eve_svi),]$eve_svi <- 0
+sum(svi_ctract_shapefile_planar_und65$eve_svi==11.5 | svi_ctract_shapefile_planar_und65$eve_svi==12.5 | svi_ctract_shapefile_planar_und65$eve_svi==15.5 | svi_ctract_shapefile_planar_und65$eve_svi==16.5)
+svi_ctract_shapefile_planar_und65[svi_ctract_shapefile_planar_und65$eve_svi == 0,]$eve_svi <- NaN
+
+# Join data
+ctract <- left_join(ctract_overlap, demographics_ctract, by = c("CTRACTID" = "fips_ctract"))
+
+# Total population in "high-risk" ctracts via rate-by-drive model
+sum(ctract$population) #349,181 people living in these areas
+sum(ctract$population)/sum(demographics_ctract$population) #6% of the population
+sum(ctract$stroke_freq_tot) #1251 total, 208 stroke deaths per year in these areas
+sum(ctract$stroke_freq_tot)/sum(ctract$population)*100000/6 
+
+#regression
+lm1 <- lm(time_min~ RUCA_urban_code + RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4, data = svi_ctract_shapefile_planar_und65)
+summary(lm1)
+
+lm1.1 <- lm(RPL_THEMES ~ RUCA_urban_code, data = svi_ctract_shapefile_planar_und65)
+summary(lm1.1)
+
+lm2 <- lm(idw~ RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4 + time_min + time_min:RUCA_urban_code, data = svi_ctract_shapefile_planar_und65)
+summary(lm2)
+
+lm3 <- lm(idw~ RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4 + time_min_cat + RUCA_urban_code_ext, data = svi_ctract_shapefile_planar_und65)
+summary(lm3)
+
+lm4 <- lm(idw~ RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4 + time_min_cat + RUCA_urban_code_ext + time_min:RUCA_urban_code + RPL_THEMES:RUCA_urban_code + RPL_THEME3:time_min, data = svi_ctract_shapefile_planar_und65)
+summary(lm4) #adding interaction term between RUCA and SVI as well as with drive time and shows that urban risk factor is mediated by its interaction with SVI
+
+#idw~ EP_POV150 + EP_UNEMP + EP_HBURD + EP_NOHSDP + EP_UNINSUR + EP_AGE65 + EP_AGE17 + EP_DISABL + EP_SNGPNT + EP_LIMENG + EP_MINRTY + EP_MUNIT + EP_MOBILE + EP_CROWD + EP_NOVEH + EP_GROUPQ + time_min + RUCA_urban_code + time_min:RUCA_urban_code + time_min:RPL_THEME2 + time_min:RPL_THEME3 + time_min:RPL_THEME4
+
+##spatial regression
+#residuals  and morans test for spatial correlation
+svi_ctract_shapefile_planar_und65 <- svi_ctract_shapefile_planar_und65[is.na(svi_ctract_shapefile_planar_und65$RPL_THEMES) == FALSE,]
+svi_ctract_shapefile_planar_und65 <- svi_ctract_shapefile_planar_und65 %>%
+  mutate(olsresid = resid(lm4))
+temp1 <- poly2nb(svi_ctract_shapefile_planar_und65, queen=T)
+temp2 <- nb2listw(temp1, style="W", zero.policy=TRUE)
+moran.plot(as.numeric(scale(svi_ctract_shapefile_planar_und65$idw)), listw=temp2, 
+           xlab="Standardized SMR", 
+           ylab="Neighbors Standardized SMR",
+           main=c("Moran Scatterplot for SMR", "in WI") )
+moran.mc(svi_ctract_shapefile_planar_und65$idw, temp2, nsim=999)
+
+#spatial lag -> !!interaction terms has been dropped with consideration of global interaction test within spatial consideration (i.e. Wald test statistic)
+fit_lag <- lagsarlm(idw~ RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4 + time_min_cat + RUCA_urban_code_ext, data = svi_ctract_shapefile_planar_und65, listw = temp2)
+summary(fit_lag)
+fit_lag_effects <- impacts(fit_lag, listw = temp2, R = 999)
+fit_lag_effects
+summary(fit_lag_effects, zstats = TRUE, short = TRUE)
+AIC(fit_lag)
+
+#spatial error
+fit_err <- errorsarlm(idw~ RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4 + time_min_cat + RUCA_urban_code_ext, data = svi_ctract_shapefile_planar_und65, listw = temp2)
+summary(fit_err)
+AIC(fit_err) #AIC is lower so use this one
+
+#la grange multiplier
+lm.LMtests(lm3, listw = temp2, test = "all",  zero.policy=TRUE)
+
+#multicollinearity
+vif(lm3)
+temp_corr <- svi_ctract_shapefile_planar_und65[,c("RPL_THEME1","RPL_THEME2","RPL_THEME3","RPL_THEME4","time_min","RUCA_urban_code_ext")]
+temp_corr <- temp_corr %>% st_drop_geometry()
+temp_corr$RUCA_urban_code_ext <- as.numeric(temp_corr$RUCA_urban_code_ext)
+cor(temp_corr)
+
+#univariate using spatial error
+fit_err_uni <- errorsarlm(idw~ RPL_THEMES, data = svi_ctract_shapefile_planar_und65, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RPL_THEME1, data = svi_ctract_shapefile_planar_und65, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RPL_THEME2, data = svi_ctract_shapefile_planar_und65, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RPL_THEME3, data = svi_ctract_shapefile_planar_und65, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RPL_THEME4, data = svi_ctract_shapefile_planar_und65, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ time_min, data = svi_ctract_shapefile_planar_und65, listw = temp2)
+summary(fit_err_uni)
+fit_err_uni <- errorsarlm(idw~ RUCA_urban_code, data = svi_ctract_shapefile_planar_und65, listw = temp2)
+summary(fit_err_uni)
+
+stargazer(fit_err, type = "html", omit = "Constant", covariate.labels = c("SVI - SES", "SVI - Household Composition", "SVI - Racial/Ethnic Minority", "SVI - Housing/Transportation", "<30 min time to DSC", "Metropolitan", "Micropolitan", "Small-town"), dep.var.labels = "Premature Stroke SMR",
+                    title="Spatial Error Regression Model", out.header= TRUE, out="test.html", ci = TRUE, omit.stat = c("ll","n","sigma2","lr"))
+
+```
+
+##ASF over 65
+```{r}
+
+idw <- raster("/Users/StephenHalada/OneDrive - mcw.edu/Stephen Halada/bg19rp_stkm_wi_cnt20_ov65.img")
+
+##visualize idw raster
+my_pal <- c('#456fb4','#91bfdb','#eeeeee','#fef090','#ef8a62','#d73027')
+bbox_new <- st_bbox(dnr_boundary) # current bounding box
+xrange <- bbox_new$xmax - bbox_new$xmin # range of x values
+yrange <- bbox_new$ymax - bbox_new$ymin # range of y values
+bbox_new[1] <- bbox_new[1] - (0.1 * xrange) # xmin - left
+bbox_new[3] <- bbox_new[3] + (0.15 * xrange) # xmax - right
+# bbox_new[2] <- bbox_new[2] - (0.5 * yrange) # ymin - bottom
+#bbox_new[4] <- bbox_new[4] + (0.5 * yrange) # ymax - top
+bbox_new <- bbox_new %>%  # take the bounding box ...
+  st_as_sfc() # ... and make it a sf polygon
+tm_shape(idw, bbox=bbox_new) +
+  tm_raster(title="Premature (age<65) Mortality Rate (SMR)",
+            breaks = c(0.30, 0.65, 0.85, 1.15, 1.40, 2.8, 6.7),
+            palette = my_pal) +
+tm_shape(dnr_boundary, bbox=bbox_new) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.title.size=1,
+  legend.position = c("right","top")
+)
+
+my_pal <- c('#456fb4','#91bfdb','#eeeeee','#fef090','#ef8a62','#d73027')
+bbox_new <- st_bbox(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) # current bounding box
+xrange <- bbox_new$xmax - bbox_new$xmin # range of x values
+yrange <- bbox_new$ymax - bbox_new$ymin # range of y values
+#bbox_new[1] <- bbox_new[1] - (0.1 * xrange) # xmin - left
+# bbox_new[3] <- bbox_new[3] + (0.5 * xrange) # xmax - right
+# bbox_new[2] <- bbox_new[2] - (0.5 * yrange) # ymin - bottom
+#bbox_new[4] <- bbox_new[4] + (0.5 * yrange) # ymax - top
+#bbox_new <- bbox_new %>%  # take the bounding box ...
+#  st_as_sfc() # ... and make it a sf polygon
+tm_shape(idw, bbox=bbox_new) +
+  tm_raster(title="Mortality Rate (SIR)",
+            breaks = c(0.30, 0.65, 0.85, 1.15, 1.40, 2.8, 6.7),
+            palette = my_pal) +
+tm_shape(dnr_boundary, bbox=bbox_new) +
+  tm_borders(col = "black") 
+
+##calculate average idw value per census tract for each ctract
+# Extract raster values to list object
+svi_ctract_shapefile_planar_ov65 <- svi_ctract_shapefile_planar
+r.vals <- raster::extract(idw, svi_ctract_shapefile_planar_ov65)
+# Use list apply to calculate mean for each polygon
+r.vals <- lapply(r.vals,na.omit)
+r.mean <- lapply(r.vals, FUN=mean)
+# Join mean values to polygon data
+svi_ctract_shapefile_planar_ov65$idw <- r.mean
+svi_ctract_shapefile_planar_ov65$idw <- as.numeric(svi_ctract_shapefile_planar_ov65$idw)
+
+#visualize idw by ctract
+tm_shape(svi_ctract_shapefile_planar_ov65) +
+  tm_polygons("idw", 
+              title="Mortality Rate (SIR)",
+              palette = my_pal, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0.30, 0.65, 0.85, 1.15, 1.40, 2.8, 6.7)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+##visualize idw by ctract by drive distance
+eve1 <- c('#FFFFFF','#d7c8c8','#d78282','#d73027')
+tm_shape(svi_ctract_shapefile_planar_ov65) +
+  tm_polygons("idw", 
+              title="Mortality Rate (SIR)",
+              palette = eve1, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0.3, 0.90, 1.30, 1.90, 6.7)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+eve2 <- c('#c8dfe5','#8fc2e2','#538fc6','#3362a0')
+tm_shape(svi_ctract_shapefile_planar_ov65) +
+  tm_polygons("time_min", 
+              palette = eve2, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(0.5, 30, 45, 60, 180)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black")
+
+svi_ctract_shapefile_planar_ov65$eve_drive <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar_ov65)) {
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min < 30.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 1.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 30.01 && svi_ctract_shapefile_planar_ov65[i,]$time_min < 45.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 2.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 45.01 && svi_ctract_shapefile_planar_ov65[i,]$time_min < 60.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 3.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 60.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 4.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min < 30.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 5.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 30.01 && svi_ctract_shapefile_planar_ov65[i,]$time_min < 45.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 6.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 45.01 && svi_ctract_shapefile_planar_ov65[i,]$time_min < 60.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 7.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 60.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 8.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min < 30.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 9.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 30.01 && svi_ctract_shapefile_planar_ov65[i,]$time_min < 45.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 10.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 45.01 && svi_ctract_shapefile_planar_ov65[i,]$time_min < 60.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 11.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 60.01 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 12.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min < 30.01 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 13.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 30.01 && svi_ctract_shapefile_planar_ov65[i,]$time_min < 45.01 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 14.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 45.01 && svi_ctract_shapefile_planar_ov65[i,]$time_min < 60.01 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 15.5
+  }
+  if (svi_ctract_shapefile_planar_ov65[i,]$time_min > 60.01 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar_ov65[i,]$eve_drive <- 16.5
+  }
+}
+
+eve <- c('#762A84','#B08EC4','#F5F67A','#E6E600','#B08EC4','#E7D5E9','#FFFFBE','#F5F67A','#7FBF7B','#D9F1D3','#FDBF85','#FD8D3D','#1A9850','#7FBF7B','#FD8D3D','#F16913')
+tm_shape(svi_ctract_shapefile_planar_ov65) +
+  tm_polygons("eve_drive", 
+              palette = eve, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+) +
+tm_shape(isochrones_joined) +
+  tm_polygons(col = "grey", alpha = 0.5, border.alpha = 0) +
+tm_shape(stroke_cent_planar) +
+  tm_dots(col = "black")
+
+##visualize idw by ctract by SVI
+eve1 <- c('#d7c8c8','#d78282','#d75050','#d73027')
+tm_shape(svi_ctract_shapefile_planar_ov65) +
+  tm_polygons("idw", 
+              title="Mortality Rate (SIR)",
+              palette = eve1, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0.3, 0.90, 1.30, 1.90, 6.7)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+eve1 <- c('#d7c8c8','#d78282','#d75050','#d73027')
+tm_shape(svi_ctract_shapefile_planar_ov65[svi_ctract_shapefile_planar_ov65$COUNTY == "Milwaukee" | svi_ctract_shapefile_planar_ov65$COUNTY == "Waukesha",]) +
+  tm_polygons("RPL_THEME1", 
+              palette = eve1, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(0, 0.25, 0.5, 0.75, 1)
+              ) +
+tm_shape(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) +
+  tm_borders(col = "black") + 
+tm_layout(
+  frame=FALSE
+)
+
+eve2 <- c('#c8dfe5','#8fc2e2','#538fc6','#3362a0')
+tm_shape(svi_ctract_shapefile_planar_ov65) +
+  tm_polygons("RPL_THEMES", 
+              palette = eve2, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black")
+
+svi_ctract_shapefile_planar_ov65$eve_svi <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar_ov65)) {
+  if (is.na(svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES)==FALSE) {  
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar_ov65[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 1.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar_ov65[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 2.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar_ov65[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 3.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar_ov65[i,]$idw < 0.7001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 4.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 5.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 6.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 7.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.0001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 0.7001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 8.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 9.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 10.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 11.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar_ov65[i,]$idw < 1.3001 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.0001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 12.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.25 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 13.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.25 && svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.5 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 14.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.5 && svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES < 0.75 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 15.5
+    }
+    if (svi_ctract_shapefile_planar_ov65[i,]$RPL_THEMES > 0.75 && svi_ctract_shapefile_planar_ov65[i,]$idw > 1.3001) {
+      svi_ctract_shapefile_planar_ov65[i,]$eve_svi <- 16.5
+    }
+  }
+}
+
+#eve with svi
+tm_shape(svi_ctract_shapefile_planar_ov65) +
+  tm_polygons("eve_svi", 
+              palette = eve, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+)
+
+tm_shape(svi_ctract_shapefile_planar_ov65[svi_ctract_shapefile_planar_ov65$COUNTY == "Milwaukee" | svi_ctract_shapefile_planar_ov65$COUNTY == "Waukesha",]) +
+  tm_polygons("eve_svi", 
+              palette = eve, 
+              border.col = "black", 
+              border.alpha = 0.3,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary[dnr_boundary$DNR_CTY_NO == 41 | dnr_boundary$DNR_CTY_NO == 68,]) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+)
+
+#regression
+lm1 <- lm(time_min~ RUCA_urban_code + RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4, data = svi_ctract_shapefile_planar_ov65)
+summary(lm1)
+
+lm1.1 <- lm(RPL_THEMES ~ RUCA_urban_code, data = svi_ctract_shapefile_planar_ov65)
+summary(lm1.1)
+
+lm2 <- lm(idw~ time_min_cat, data = svi_ctract_shapefile_planar_ov65)
+summary(lm2)
+
+lm3 <- lm(idw~ RPL_THEME1 + RPL_THEME2 + RPL_THEME3 + RPL_THEME4 + time_min_cat + RUCA_urban_code_ext, data = svi_ctract_shapefile_planar_ov65)
+summary(lm3)
+
+#idw~ EP_POV150 + EP_UNEMP + EP_HBURD + EP_NOHSDP + EP_UNINSUR + EP_AGE65 + EP_AGE17 + EP_DISABL + EP_SNGPNT + EP_LIMENG + EP_MINRTY + EP_MUNIT + EP_MOBILE + EP_CROWD + EP_NOVEH + EP_GROUPQ + time_min + RUCA_urban_code + time_min:RUCA_urban_code + time_min:RPL_THEME2 + time_min:RPL_THEME3 + time_min:RPL_THEME4
+
+
+
+```
+
+###stroke desert NAEMSP abstract 
+```{r}
+
+stroke_cent_planar$throm_capable <- 1
+unique(stroke_cent_planar$CertificationProgram)
+for (i in 1:nrow(stroke_cent_planar)) {
+  if (stroke_cent_planar[i,]$CertificationProgram == "Advanced Primary Stroke Center          " | stroke_cent_planar[i,]$CertificationProgram == "Acute Stroke Ready Hospital             ") {
+    stroke_cent_planar[i,]$throm_capable <- 0
+  }
+}
+
+stroke_cent_planar$ID <- NaN
+for (i in 1:nrow(stroke_cent_planar)) {
+  stroke_cent_planar[i,]$ID <- i
+}
+
+#drive time by thromb capable or not
+temp <- stroke_cent_planar
+temp <- stroke_cent_planar[stroke_cent_planar$throm_capable == 1,]$ID
+
+times_total_throm_capable <- times_total
+times_total_throm_Ncapable <- times_total
+times_total_throm_capable = subset(times_total_throm_capable, select = temp)
+times_total_throm_Ncapable = subset(times_total_throm_Ncapable, select = -temp)
+remove(temp)
+
+#drive time by DSC type
+times_total_psc <- times_total
+temp <- stroke_cent_planar[stroke_cent_planar$CertificationProgram == "Advanced Primary Stroke Center          ",]$ID
+times_total_psc = subset(times_total_psc, select = temp)
+times_total_ashr <- times_total
+temp <- stroke_cent_planar[stroke_cent_planar$CertificationProgram == "Acute Stroke Ready Hospital             ",]$ID
+times_total_ashr = subset(times_total_ashr, select = temp)
+times_total_tsc <- times_total
+temp <- stroke_cent_planar[stroke_cent_planar$CertificationProgram == "Advanced Thrombectomy Capable Stroke Ctr",]$ID
+times_total_tsc = subset(times_total_tsc, select = temp)
+times_total_csc <- times_total
+temp <- stroke_cent_planar[stroke_cent_planar$CertificationProgram == "Advanced Comprehensive Stroke Center    ",]$ID
+times_total_csc = subset(times_total_csc, select = temp)
+
+#min time by thomb capable w/ merge
+min_time_throm_capable <- apply(times_total_throm_capable, 1, min)
+min_time_throm_Ncapable <- apply(times_total_throm_Ncapable, 1, min)
+svi_ctract_shapefile_planar$time_min <- min_time
+svi_ctract_shapefile_planar$time_min_throm_capable <- min_time_throm_capable
+svi_ctract_shapefile_planar$time_min_throm_Ncapable <- min_time_throm_Ncapable
+
+#min time by DSC type
+min_time_psc <- apply(times_total_psc, 1, min)
+svi_ctract_shapefile_planar$time_min_psc <- min_time_psc
+min_time_ashr <- apply(times_total_ashr, 1, min)
+svi_ctract_shapefile_planar$time_min_ashr <- min_time_ashr
+min_time_tsc <- apply(times_total_tsc, 1, min)
+svi_ctract_shapefile_planar$time_min_tsc <- min_time_tsc
+min_time_csc <- apply(times_total_csc, 1, min)
+svi_ctract_shapefile_planar$time_min_csc <- min_time_csc
+
+dfSummary(svi_ctract_shapefile_planar$time_min) #ctract average vs individual average
+median(svi_ctract_shapefile_planar$time_min, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min, 0.25, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min, 0.75, na.rm=TRUE)
+dfSummary(svi_ctract_shapefile_planar$time_min_throm_capable)
+median(svi_ctract_shapefile_planar$time_min_throm_capable, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_throm_capable, 0.25, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_throm_capable, 0.75, na.rm=TRUE)
+dfSummary(svi_ctract_shapefile_planar$time_min_throm_Ncapable)
+median(svi_ctract_shapefile_planar$time_min_throm_Ncapable, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_throm_Ncapable, 0.25, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_throm_Ncapable, 0.75, na.rm=TRUE)
+dfSummary(svi_ctract_shapefile_planar$time_min_psc)
+median(svi_ctract_shapefile_planar$time_min_psc, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_psc, 0.25, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_psc, 0.75, na.rm=TRUE)
+dfSummary(svi_ctract_shapefile_planar$time_min_ashr)
+median(svi_ctract_shapefile_planar$time_min_ashr, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_ashr, 0.25, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_ashr, 0.75, na.rm=TRUE)
+dfSummary(svi_ctract_shapefile_planar$time_min_tsc)
+median(svi_ctract_shapefile_planar$time_min_tsc, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_tsc, 0.25, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_tsc, 0.75, na.rm=TRUE)
+dfSummary(svi_ctract_shapefile_planar$time_min_csc)
+median(svi_ctract_shapefile_planar$time_min_csc, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_csc, 0.25, na.rm=TRUE)
+quantile(svi_ctract_shapefile_planar$time_min_csc, 0.75, na.rm=TRUE)
+
+##modify drive distance code section to evaluate 30/45/60 minute population catchment for all stroke centers and by throm capable -> DONE! - I redid catchment for all categories, time_min are not dependent of the coding error I made earlier with throm status so those fields are good
+
+#table drive time by RUCA and DSC
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code_ext) %>%
+    summarize(min = min(time_min),
+            q1 = quantile(time_min, 0.25),
+            median = median(time_min),
+            mean = mean(time_min),
+            q3 = quantile(time_min, 0.75),
+            max = max(time_min))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code_ext) %>%
+    summarize(min = min(time_min_throm_capable),
+            q1 = quantile(time_min_throm_capable, 0.25),
+            median = median(time_min_throm_capable),
+            mean = mean(time_min_throm_capable),
+            q3 = quantile(time_min_throm_capable, 0.75),
+            max = max(time_min_throm_capable))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code_ext) %>%
+    summarize(min = min(time_min_throm_Ncapable),
+            q1 = quantile(time_min_throm_Ncapable, 0.25),
+            median = median(time_min_throm_Ncapable),
+            mean = mean(time_min_throm_Ncapable),
+            q3 = quantile(time_min_throm_Ncapable, 0.75),
+            max = max(time_min_throm_Ncapable))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code_ext) %>%
+    summarize(min = min(time_min_psc),
+            q1 = quantile(time_min_psc, 0.25),
+            median = median(time_min_psc),
+            mean = mean(time_min_psc),
+            q3 = quantile(time_min_psc, 0.75),
+            max = max(time_min_psc))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code_ext) %>%
+    summarize(min = min(time_min_ashr),
+            q1 = quantile(time_min_ashr, 0.25),
+            median = median(time_min_ashr),
+            mean = mean(time_min_ashr),
+            q3 = quantile(time_min_ashr, 0.75),
+            max = max(time_min_ashr))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code_ext) %>%
+    summarize(min = min(time_min_tsc),
+            q1 = quantile(time_min_tsc, 0.25),
+            median = median(time_min_tsc),
+            mean = mean(time_min_tsc),
+            q3 = quantile(time_min_tsc, 0.75),
+            max = max(time_min_tsc))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code_ext) %>%
+    summarize(min = min(time_min_csc),
+            q1 = quantile(time_min_csc, 0.25),
+            median = median(time_min_csc),
+            mean = mean(time_min_csc),
+            q3 = quantile(time_min_csc, 0.75),
+            max = max(time_min_csc))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code) %>%
+    summarize(min = min(time_min),
+            q1 = quantile(time_min, 0.25),
+            median = median(time_min),
+            mean = mean(time_min),
+            q3 = quantile(time_min, 0.75),
+            max = max(time_min))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code) %>%
+    summarize(min = min(time_min_psc),
+            q1 = quantile(time_min_psc, 0.25),
+            median = median(time_min_psc),
+            mean = mean(time_min_psc),
+            q3 = quantile(time_min_psc, 0.75),
+            max = max(time_min_psc))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code) %>%
+    summarize(min = min(time_min_ashr),
+            q1 = quantile(time_min_ashr, 0.25),
+            median = median(time_min_ashr),
+            mean = mean(time_min_ashr),
+            q3 = quantile(time_min_ashr, 0.75),
+            max = max(time_min_ashr))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code) %>%
+    summarize(min = min(time_min_throm_Ncapable),
+            q1 = quantile(time_min_throm_Ncapable, 0.25),
+            median = median(time_min_throm_Ncapable),
+            mean = mean(time_min_throm_Ncapable),
+            q3 = quantile(time_min_throm_Ncapable, 0.75),
+            max = max(time_min_throm_Ncapable))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code) %>%
+    summarize(min = min(time_min_tsc),
+            q1 = quantile(time_min_tsc, 0.25),
+            median = median(time_min_tsc),
+            mean = mean(time_min_tsc),
+            q3 = quantile(time_min_tsc, 0.75),
+            max = max(time_min_tsc))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code) %>%
+    summarize(min = min(time_min_csc),
+            q1 = quantile(time_min_csc, 0.25),
+            median = median(time_min_csc),
+            mean = mean(time_min_csc),
+            q3 = quantile(time_min_csc, 0.75),
+            max = max(time_min_csc))
+svi_ctract_shapefile_planar %>%
+  group_by(RUCA_urban_code) %>%
+    summarize(min = min(time_min_throm_capable),
+            q1 = quantile(time_min_throm_capable, 0.25),
+            median = median(time_min_throm_capable),
+            mean = mean(time_min_throm_capable),
+            q3 = quantile(time_min_throm_capable, 0.75),
+            max = max(time_min_throm_capable))
+
+#table SMR by DSC
+svi_ctract_shapefile_planar$time_min_csc_cat <- cut(svi_ctract_shapefile_planar$time_min_csc,
+                       breaks=c(-Inf,30,45,60,Inf))
+svi_ctract_shapefile_planar %>%
+  group_by(time_min_csc_cat) %>%
+    summarize(min = min(idw),
+            q1 = quantile(idw, 0.25),
+            median = median(idw),
+            mean = mean(idw),
+            q3 = quantile(idw, 0.75),
+            max = max(idw))
+
+
+
+#check autocorrelation between all centers and throm cap
+res_lm <- lm(time_min ~ time_min_throm_capable, data = svi_ctract_shapefile_planar)
+durbinWatsonTest(res_lm)
+
+#repeated measures ANOVA
+res_aov <- aov(time_min ~ RUCA_urban_code_ext,
+  data = svi_ctract_shapefile_planar
+)
+summary(res_aov)
+
+res_aov <- aov(time_min_throm_capable ~ RUCA_urban_code_ext,
+  data = svi_ctract_shapefile_planar
+)
+summary(res_aov)
+
+#try two way anova
+two_anova <- gather(svi_ctract_shapefile_planar, cent_type, time_min, c(time_min, time_min_throm_capable), factor_key=TRUE)
+summary(aov(time_min ~ cent_type * RUCA_urban_code_ext, data = two_anova))
+
+two_anova$RUCA_urban_code_ext <- as.factor(two_anova$RUCA_urban_code_ext)
+pairwise.wilcox.test(two_anova[two_anova$cent_type == "time_min_throm_capable",]$time_min, two_anova$RUCA_urban_code_ext,p.adjust.method = "bonferroni" ) 
+
+pairwise.wilcox.test(two_anova[two_anova$cent_type == "time_min",]$time_min, two_anova$RUCA_urban_code_ext,p.adjust.method = "bonferroni" )
+two_anova_throm <- gather(svi_ctract_shapefile_planar, cent_type, time_min, c(time_min_throm_capable, time_min_throm_Ncapable), factor_key=TRUE)
+summary(two_anova_throm[two_anova_throm$cent_type == "time_min_throm_capable",]$time_min)
+summary(two_anova_throm[two_anova_throm$cent_type == "time_min_throm_Ncapable",]$time_min)
+wilcox.test(time_min ~ cent_type, data=two_anova_throm, na.rm=TRUE, exact=FALSE, conf.int=TRUE) #sig
+wilcox.test(time_min ~ cent_type, data=two_anova, na.rm=TRUE, exact=FALSE, conf.int=TRUE) #sig
+wilcox.test(time_min ~ cent_type, data=two_anova[two_anova$RUCA_urban_code_ext == "11",], na.rm=TRUE, exact=FALSE, conf.int=TRUE) #sig
+wilcox.test(time_min ~ cent_type, data=two_anova[two_anova$RUCA_urban_code_ext == "12",], na.rm=TRUE, exact=FALSE, conf.int=TRUE) #sig
+wilcox.test(time_min ~ cent_type, data=two_anova[two_anova$RUCA_urban_code_ext == "13",], na.rm=TRUE, exact=FALSE, conf.int=TRUE) #non-sig
+wilcox.test(time_min ~ cent_type, data=two_anova[two_anova$RUCA_urban_code_ext == "14",], na.rm=TRUE, exact=FALSE, conf.int=TRUE) #sig
+
+wilcox.test(time_min ~ RUCA_urban_code, data=svi_ctract_shapefile_planar, na.rm=TRUE, exact=FALSE, conf.int=TRUE) #sig
+
+##need to make sure idw and eve_drive are in svi_ctract_shapefile_planar
+idw <- raster("/Users/StephenHalada/OneDrive - mcw.edu/Stephen Halada/bg19rp_stkm_wi_cnt30.img")
+
+svi_ctract_shapefile_planar$eve_drive <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar)) {
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 1.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 2.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 3.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 4.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 5.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 6.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 7.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 8.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 9.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 10.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 11.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 12.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 13.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 14.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 15.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 16.5
+  }
+}
+
+svi_ctract_shapefile_planar$eve_drive_throm <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar)) {
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 1.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 30.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 2.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 45.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 3.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 4.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 5.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 30.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 6.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 45.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 7.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 8.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 9.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 30.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 10.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 45.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 11.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 12.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 30.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 13.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 30.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 45.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 14.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 45.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_capable < 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 15.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_capable > 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_throm <- 16.5
+  }
+}
+
+svi_ctract_shapefile_planar$eve_drive_nthrom <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar)) {
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 1.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 30.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 2.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 45.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 3.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 4.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 5.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 30.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 6.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 45.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 7.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 8.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 9.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 30.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 10.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 45.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 11.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 12.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 30.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 13.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 30.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 45.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 14.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 45.01 && svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable < 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 15.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min_throm_Ncapable > 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive_nthrom <- 16.5
+  }
+}
+
+svi_ctract_shapefile_planar$eve_drive <- NaN
+for (i in 1:nrow(svi_ctract_shapefile_planar)) {
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 1.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 2.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 3.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 4.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 5.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 6.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 7.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.0001 && svi_ctract_shapefile_planar[i,]$idw > 0.7001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 8.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 9.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 10.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 11.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw < 1.3001 && svi_ctract_shapefile_planar[i,]$idw > 1.0001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 12.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min < 30.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 13.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 30.01 && svi_ctract_shapefile_planar[i,]$time_min < 45.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 14.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 45.01 && svi_ctract_shapefile_planar[i,]$time_min < 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 15.5
+  }
+  if (svi_ctract_shapefile_planar[i,]$time_min > 60.01 && svi_ctract_shapefile_planar[i,]$idw > 1.3001) {
+    svi_ctract_shapefile_planar[i,]$eve_drive <- 16.5
+  }
+}
+
+
+#ASC eve-type
+neve <- c('#7C009A','#cc99ff','#F5F67A','#E6E600','#cc99ff','#e6ccff','#FFFFBE','#F5F67A','#a0e3f8','#d0f1fb','#ffd1b3','#ffa366','#4CCCF2','#a0e3f8','#ffa366','#FF6801')
+tiff("idw_45min.tiff", units="in", width=5, height=5, res=300)
+isochrones_joined <- st_as_sf(catchment2) #2,5,8 (total, throm, nthrom)
+if (nrow(isochrones_joined) == 2) {
+  isochrones_joined = isochrones_joined[-1,]
+}
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("eve_drive", 
+              palette = neve, 
+              border.col = "white", 
+              border.alpha = 0.1,
+              breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.show=FALSE
+) +
+tm_shape(isochrones_joined) +
+  tm_polygons(col = "#666666", alpha = 0.5, border.alpha = 0) +
+tm_shape(stroke_cent_planar) +  #stroke_cent_planar[stroke_cent_planar$throm_capable == 1,]
+  tm_dots(col = "black")
+dev.off()
+
+##percent of WI population in orange (drive distance >30 min w/ high stroke mortality rate)
+#percent pop in rate-by-drive 10.5,14.5,11.5,12.5,15.5,16.5 -> drive time over 45 minutes and SMR over 1
+ctract_overlap <- svi_ctract_shapefile_planar %>% dplyr::filter(eve_drive==11.5 | eve_drive==12.5 | eve_drive==15.5 | eve_drive==16.5) %>%
+    st_drop_geometry()
+ctract_overlap <- as.data.frame(ctract_overlap)
+sum(svi_ctract_shapefile_planar$eve_drive==11.5 | svi_ctract_shapefile_planar$eve_drive==12.5 | svi_ctract_shapefile_planar$eve_drive==15.5 | svi_ctract_shapefile_planar$eve_drive==16.5)
+
+# Join data
+ctract <- left_join(ctract_overlap, demographics_ctract, by = c("CTRACTID" = "fips_ctract"))
+
+# Total population in "high-risk" ctracts via rate-by-drive model
+sum(ctract$population) #349,181 people living in these areas
+sum(ctract$population)/sum(demographics_ctract$population) #6% of the population
+sum(ctract$stroke_freq_tot) #1251 total, 208 stroke deaths per year in these areas
+sum(ctract$stroke_freq_tot)/sum(ctract$population)*100000/6 
+
+
+##percent of WI population in orange (drive distance >30 min w/ high stroke mortality rate)
+#percent pop in rate-by-drive 10.5,14.5,11.5,12.5,15.5,16.5 -> drive time over 45 minutes and SMR over 1
+ctract_overlap <- svi_ctract_shapefile_planar %>% dplyr::filter(eve_drive_throm==11.5 | eve_drive_throm==12.5 | eve_drive_throm==15.5 | eve_drive_throm==16.5) %>% dplyr::filter(RUCA_urban_code_ext == 13) %>%
+    st_drop_geometry()
+ctract_overlap <- as.data.frame(ctract_overlap)
+sum(svi_ctract_shapefile_planar$eve_drive_throm==11.5 | svi_ctract_shapefile_planar$eve_drive_throm==12.5 | svi_ctract_shapefile_planar$eve_drive_throm==15.5 | svi_ctract_shapefile_planar$eve_drive_throm==16.5)
+
+# Join data
+ctract <- left_join(ctract_overlap, demographics_ctract, by = c("CTRACTID" = "fips_ctract"))
+
+# Total population in "high-risk" ctracts via rate-by-drive model
+sum(ctract$population) #349,181 people living in these areas
+sum(ctract$population)/sum(demographics_ctract$population) #6% of the population
+sum(ctract$stroke_freq_tot) #1251 total, 208 stroke deaths per year in these areas
+sum(ctract$stroke_freq_tot)/sum(ctract$population)*100000/6 
+
+
+
+##spatial regression
+#residuals  and morans test for spatial correlation
+svi_ctract_shapefile_planar <- svi_ctract_shapefile_planar[is.na(svi_ctract_shapefile_planar$RPL_THEMES) == FALSE,]
+svi_ctract_shapefile_planar <- svi_ctract_shapefile_planar %>%
+  mutate(olsresid = resid(lm4))
+temp1 <- poly2nb(svi_ctract_shapefile_planar, queen=T)
+temp2 <- nb2listw(temp1, style="W", zero.policy=TRUE)
+moran.plot(as.numeric(scale(svi_ctract_shapefile_planar$idw)), listw=temp2, 
+           xlab="Standardized SMR", 
+           ylab="Neighbors Standardized SMR",
+           main=c("Moran Scatterplot for SMR", "in WI") )
+moran.mc(svi_ctract_shapefile_planar$idw, temp2, nsim=999)
+
+#spatial lag -> !!interaction terms has been dropped with consideration of global interaction test within spatial consideration (i.e. Wald test statistic)
+fit_lag <- lagsarlm(idw~ THEMES+ time_min_cat + RUCA_urban_code_ext, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_lag)
+fit_lag_effects <- impacts(fit_lag, listw = temp2, R = 999)
+fit_lag_effects
+summary(fit_lag_effects, zstats = TRUE, short = TRUE)
+AIC(fit_lag)
+
+#spatial error
+fit_err <- errorsarlm(idw~ time_min_cat + time_min_nthrom_cat + time_min_throm_cat + RUCA_urban_code_ext, data = svi_ctract_shapefile_planar, listw = temp2)
+summary(fit_err)
+AIC(fit_err) 
+
+stargazer(fit_err, type = "html", omit = "Constant", covariate.labels = c(">45 min time to DSC", ">45 min time to nASC", ">45 min time to ASC", "Micropolitan", "Small-town", "Rural"), dep.var.labels = "Test statistic",
+                    title="Spatial Error Regression Model", out.header= TRUE, out="test1.html", ci = TRUE, omit.stat = c("ll","n","sigma2","lr"))
+
+```
+
+###stroke desert tables/figures/stats
+```{r}
+#read in DSC catchment
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+catchment1 <- readOGR("isochrones", "30min_time_min")
+catchment2 <- readOGR("isochrones", "45min_time_min")
+catchment3 <- readOGR("isochrones", "60min_time_min")
+
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Random Stuff")
+#tiff("DSC_catchment.tiff", units="in", width=5, height=5, res=300)
+tm_shape(state_boundary) +
+  tm_borders(col = "black") +
+tm_shape(catchment1) +
+  tm_polygons(col = "#222222", alpha = 0.3, border.alpha = 0) +
+tm_shape(catchment2) +
+  tm_polygons(col = "#777777", alpha = 0.3, border.alpha = 0) +
+tm_shape(catchment3) +
+  tm_polygons(col = "#999999", alpha = 0.3, border.alpha = 0) +
+tmap_options(check.and.fix = TRUE) +
+tm_shape(stroke_cent_planar[stroke_cent_planar$throm_capable == 0,]) +
+  tm_dots(col = "blue", size = 0.2) +
+tm_shape(stroke_cent_planar[stroke_cent_planar$throm_capable == 1,]) +
+  tm_dots(col = "red", size = 0.2)
+#dev.off()
+
+
+#read in ASC catchment
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+catchment4 <- readOGR("isochrones", "30min_time_min_throm")
+catchment5 <- readOGR("isochrones", "45min_time_min_throm")
+catchment6 <- readOGR("isochrones", "60min_time_min_throm")
+
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Random Stuff")
+tiff("ASC_catchment.tiff", units="in", width=5, height=5, res=300)
+tm_shape(state_boundary) +
+  tm_borders(col = "black") +
+tm_shape(catchment4) +
+  tm_polygons(col = "#222222", alpha = 0.3, border.alpha = 0) +
+tm_shape(catchment5) +
+  tm_polygons(col = "#777777", alpha = 0.3, border.alpha = 0) +
+tm_shape(catchment6) +
+  tm_polygons(col = "#999999", alpha = 0.3, border.alpha = 0) +
+tmap_options(check.and.fix = TRUE) +
+tm_shape(stroke_cent_planar[stroke_cent_planar$throm_capable == 1,]) +
+  tm_dots(col = "red", size = 0.2)
+dev.off()  
+
+
+
+#read in nASC catchment
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+catchment7 <- readOGR("isochrones", "30min_time_min_nthrom")
+catchment8 <- readOGR("isochrones", "45min_time_min_nthrom")
+catchment9 <- readOGR("isochrones", "60min_time_min_nthrom")
+
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Random Stuff")
+#tiff("nASC_catchment.tiff", units="in", width=5, height=5, res=300)
+tm_shape(state_boundary) +
+  tm_borders(col = "black") +
+tm_shape(catchment7) +
+  tm_polygons(col = "#222222", alpha = 0.3, border.alpha = 0) +
+tm_shape(catchment8) +
+  tm_polygons(col = "#777777", alpha = 0.3, border.alpha = 0) +
+tm_shape(catchment9) +
+  tm_polygons(col = "#999999", alpha = 0.3, border.alpha = 0) +
+tmap_options(check.and.fix = TRUE) +
+tm_shape(stroke_cent_planar[stroke_cent_planar$throm_capable == 0,]) +
+  tm_dots(col = "blue", size = 0.2)
+#dev.off() 
+
+
+
+
+
+
+#read in tsc catchment
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+catchment10 <- readOGR("isochrones", "30min_time_min_tsc")
+catchment11 <- readOGR("isochrones", "45min_time_min_tsc")
+catchment12 <- readOGR("isochrones", "60min_time_min_tsc")
+
+
+
+
+#read in csc catchment
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+catchment13 <- readOGR("isochrones", "30min_time_min_csc")
+catchment14 <- readOGR("isochrones", "45min_time_min_csc")
+catchment15 <- readOGR("isochrones", "60min_time_min_csc")
+
+
+
+
+
+#read in psc catchment
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+catchment16 <- readOGR("isochrones", "30min_time_min_psc")
+catchment17 <- readOGR("isochrones", "45min_time_min_psc")
+catchment18 <- readOGR("isochrones", "60min_time_min_psc")
+
+
+
+
+
+#read in ashr catchment
+setwd("/Users/StephenHalada/OneDrive - mcw.edu/Other/MCW Research/Stroke/Code and Data")
+catchment19 <- readOGR("isochrones", "30min_time_min_ashr")
+catchment20 <- readOGR("isochrones", "45min_time_min_ashr")
+catchment21 <- readOGR("isochrones", "60min_time_min_ashr")
+
+
+
+
+
+
+###population for catchment areas
+isochrones_joined <- st_as_sf(catchment21)
+if (nrow(isochrones_joined) == 2) {
+  isochrones_joined = isochrones_joined[-1,]
+}
+
+# Calculate intersection - will take some minutes
+sf_use_s2(FALSE)
+intersect <- st_intersection(svi_ctract_shapefile_planar, isochrones_joined) %>% 
+        mutate(intersect_area = st_area(.)) %>%
+        dplyr::select(CTRACTID, intersect_area) %>% 
+        st_drop_geometry()
+
+# Merge intersection area by geoid
+svi_ctract_shapefile_planar <- left_join(svi_ctract_shapefile_planar, intersect, by = "CTRACTID")
+
+# Calculate overlap percent between block groups and isochrones
+svi_ctract_shapefile_planar <- svi_ctract_shapefile_planar %>% 
+    # If missing it's because it didn't overlap, so 0
+    mutate(intersect_area = ifelse(is.na(intersect_area), 0, intersect_area),
+        overlap = as.numeric(intersect_area/bg_area))
+
+# Summary of the overlap percents
+summary(svi_ctract_shapefile_planar$overlap)
+
+# map the percent overlap with isochrones for all stroke centers
+pal <- colorNumeric("Purples", domain = svi_ctract_shapefile_planar$overlap)
+leaflet() %>%
+    addProviderTiles("CartoDB.Positron") %>%
+    setView(
+        -86.7667415602124, 36.188530779087586,
+        zoom = 5) %>%
+    addPolygons(
+        data = svi_ctract_shapefile_planar , 
+        fillColor = ~pal(svi_ctract_shapefile_planar$overlap), 
+        fillOpacity = 1, 
+        weight = 0.5, 
+        smoothFactor = 0.2, 
+        stroke = TRUE,
+        color = "black") %>%
+    # Isochrone outlines
+    addPolygons(
+        data = isochrones_joined, 
+        fill = TRUE,
+        stroke = TRUE,
+        fillColor = "yellow",
+        fillOpacity = 0.05,
+        color = "red",
+        weight = 1.5) %>%
+    addLegend(pal = pal, 
+                        values = svi_ctract_shapefile_planar$overlap, 
+                        position = "bottomright", 
+                        title = "Intersection with isochrones",
+                        opacity = 1) %>%
+    addCircles(
+        data = stroke_cent_planar, 
+        radius = 6,
+        color = "darkgreen",
+        opacity = 0.6)
+
+#population in each ctract
+#census_api_key("92751b5d10e3948841cb66d921fd764f075d2ec5", install = TRUE)
+#View(listCensusApis())
+#acs_raw <- get_acs(
+#  geography = "tract", 
+#  variables = c("NAME", "B01001_001E"),
+#  state = "WI", 
+#  year = 2018,
+#  geometry = TRUE
+#)
+
+demographics_ctract <- acs_raw %>% 
+    rename(name = NAME,
+                 population = estimate,
+           fips_ctract = GEOID) %>%
+    dplyr::select(fips_ctract, name, population)
+
+head(demographics_ctract)
+
+###percent pop w/i selected driving range
+ctract_overlap <- svi_ctract_shapefile_planar %>%
+    st_drop_geometry()
+colnames(ctract_overlap)[colnames(ctract_overlap) == "CTRACTID"] ="geoid"
+ctract_overlap <- as.data.frame(ctract_overlap)
+
+# Join data
+ctract <- left_join(ctract_overlap, demographics_ctract, by = c("geoid" = "fips_ctract"))
+
+# Calculate!
+#sum(ctract$population)
+#sum(ctract$stroke_freq_tot)
+#sum(ctract$stroke_freq_tot)/sum(ctract$population)*100000
+state_sums <- ctract %>% dplyr::select(geoid, overlap, population) %>%
+    summarize(within_total = sum(population * overlap),
+                        population_total = sum(population)) %>%
+    mutate(within_total_pct = within_total/population_total) %>%
+    ungroup()
+
+state_sums
+
+#median SMR in small towns >45 minutes from DSC, time_min_throm_capable, time_min_throm_Ncapaable
+svi_ctract_shapefile_planar %>%
+  filter(RUCA_urban_code_ext == 13) %>%
+  filter(time_min_throm_Ncapable > 45) %>%
+    summarize(min = min(idw),
+            q1 = quantile(idw, 0.25),
+            median = median(idw),
+            mean = mean(idw),
+            q3 = quantile(idw, 0.75),
+            max = max(idw))
+temp <- svi_ctract_shapefile_planar %>%
+  filter(RUCA_urban_code_ext == 13 | RUCA_urban_code_ext == 14) %>%
+  filter(idw>1) %>%
+  filter(time_min_throm_capable>45)
+
+ctract_overlap <- temp %>%
+    st_drop_geometry()
+colnames(ctract_overlap)[colnames(ctract_overlap) == "CTRACTID"] ="geoid"
+ctract_overlap <- as.data.frame(ctract_overlap)
+ctract <- left_join(ctract_overlap, demographics_ctract, by = c("geoid" = "fips_ctract"))
+sum(ctract$population) #349,181 people living in these areas
+sum(ctract$population)/sum(demographics_ctract$population) #6% of the population
+sum(ctract_overlap$stroke_freq_tot)/5 #1251 total, 208 stroke deaths per year in these areas
+sum(ctract$stroke_freq_tot)/sum(ctract$population)*100000/6 
+
+#other calculations
+temp <- svi_ctract_shapefile_planar %>%
+  filter(idw > 1.25) 
+sum(temp$E_TOTPOP)/sum(svi_ctract_shapefile_planar$E_TOTPOP)
+temp <- svi_ctract_shapefile_planar %>%
+  filter(idw > 1.25) %>%
+  filter(RUCA_urban_code_ext != 11)
+svi_ctract_shapefile_planar %>%
+  filter(RUCA_urban_code_ext != 11) %>%
+  summarize(min = min(time_min),
+            q1 = quantile(time_min_throm_capable, 0.25),
+            median = median(time_min_throm_capable),
+            mean = mean(time_min_throm_capable),
+            q3 = quantile(time_min_throm_capable, 0.75),
+            max = max(time_min_throm_capable))
+svi_ctract_shapefile_planar %>%
+  filter(RUCA_urban_code_ext != 14) %>%
+  summarize(min = min(idw),
+            q1 = quantile(idw, 0.25),
+            median = median(idw),
+            mean = mean(idw),
+            q3 = quantile(idw, 0.75),
+            max = max(idw))
+temp <- svi_ctract_shapefile_planar %>%
+  filter(time_min < 30) %>%
+  filter(RUCA_urban_code_ext == 11)
+temp <- svi_ctract_shapefile_planar %>%
+  filter(RUCA_urban_code_ext == 14)
+temp <- temp$idw
+write.table(temp, file = "rural_idw.txt", sep = "\t",
+            row.names = FALSE)
+
+```
+
+#tribal territory maps
+```{r}
+
+tribe <- readOGR("tl_2018_us_aiannh", "tl_2018_us_aiannh")
+plot(tribe)
+tribe <- st_as_sf(tribe)
+st_is_valid(tribe, reason = TRUE)
+tribe <- tribe[tribe$NAMELSAD == "Bad River Reservation" | tribe$NAMELSAD == "Forest County Potawatomi Off-Reservation Trust Land" | tribe$NAMELSAD == "Forest County Potawatomi Community" | tribe$NAMELSAD == "Ho-Chunk Nation Reservation" | tribe$NAMELSAD == "Ho-Chunk Nation Off-Reservation Trust Land" | tribe$NAMELSAD == "Lac Courte Oreilles Reservation" | tribe$NAMELSAD == "Lac Courte Oreilles Off-Reservation Trust Land" | tribe$NAMELSAD == "Lac du Flambeau Reservation" | tribe$NAMELSAD == "Menominee Off-Reservation Trust Land" | tribe$NAMELSAD == "Menominee Reservation" | tribe$NAMELSAD == "Oneida Nation Reservation" | tribe$NAMELSAD == "Oneida (WI) Reservation" | tribe$NAMELSAD == "Oneida (WI) Off-Reservation Trust Land" | tribe$NAMELSAD == "Red Cliff Reservation" | tribe$NAMELSAD == "Red Cliff Off-Reservation Trust Land" | tribe$NAMELSAD == "Sokaogon Chippewa Community" | tribe$NAMELSAD == "Sokaogon Chippewa Off-Reservation Trust Land" | tribe$NAMELSAD == "Stockbridge Munsee Community" | tribe$NAMELSAD == "Stockbridge Munsee Off-Reservation Trust Land",]
+
+tm_shape(idw, bbox=bbox_new) +
+  tm_raster(title="Premature (age<65) Mortality Rate (SMR)",
+            breaks = c(0.30, 0.65, 0.85, 1.15, 1.40, 2.8, 6.7),
+            palette = my_pal) +
+tm_shape(dnr_boundary, bbox=bbox_new) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.title.size=1,
+  legend.position = c("right","top")
+) +
+tm_shape(tribe) +
+  tm_borders(col = "purple")
+
+```
+
+#ASF crude total
+```{r}
+idw_crude_total <- raster("/Users/StephenHalada/OneDrive - mcw.edu/Stephen Halada/bg19rp_stkm_wi_crude_cnt30.img")
+
+##visualize idw raster
+my_pal_crude <- c('#eeeeee','#dec4fc','#c08dfa','#8752ad','#78308d','#490595')
+bbox_new <- st_bbox(dnr_boundary) # current bounding box
+xrange <- bbox_new$xmax - bbox_new$xmin # range of x values
+yrange <- bbox_new$ymax - bbox_new$ymin # range of y values
+bbox_new[1] <- bbox_new[1] - (0.1 * xrange) # xmin - left
+# bbox_new[3] <- bbox_new[3] + (0.5 * xrange) # xmax - right
+# bbox_new[2] <- bbox_new[2] - (0.5 * yrange) # ymin - bottom
+#bbox_new[4] <- bbox_new[4] + (0.5 * yrange) # ymax - top
+bbox_new <- bbox_new %>%  # take the bounding box ...
+  st_as_sfc() # ... and make it a sf polygon
+#tiff("cmr_ctract.tiff", units="in", width=7, height=7, res=300)
+tm_shape(idw_crude_total, bbox=bbox_new) +
+  tm_raster(title="Crude Mortality Rate (CMR) per 100,000",
+            breaks = c(13, 20,30,40,50,70, 200),
+            palette = my_pal_crude) +
+tm_shape(dnr_boundary, bbox=bbox_new) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.title.size=1,
+  legend.position = c("right","top")
+)
+#dev.off()
+
+##calculate average idw value per census tract for each ctract
+# Extract raster values to list object
+r.vals <- raster::extract(idw_crude_total, svi_ctract_shapefile_planar)
+# Use list apply to calculate mean for each polygon
+r.vals <- lapply(r.vals,na.omit)
+r.mean <- lapply(r.vals, FUN=mean)
+# Join mean values to polygon data
+svi_ctract_shapefile_planar$idw_crude_total <- r.mean
+svi_ctract_shapefile_planar$idw_crude_total <- as.numeric(svi_ctract_shapefile_planar$idw_crude_total)
+
+#visualize idw_crude_total by ctract
+tm_shape(svi_ctract_shapefile_planar) +
+  tm_polygons("idw_crude_total", 
+              title="Mortality Rate (SMR)",
+              palette = my_pal, 
+              border.col = "white", 
+              border.alpha = 0.1, 
+              breaks = c(13, 20, 40, 50, 75, 100, 200)
+              ) +
+tm_shape(dnr_boundary) +
+  tm_borders(col = "black") +
+tm_layout(
+  frame=FALSE,
+  legend.title.size=1,
+  legend.position = c("right","top")
+)
+
+
+```
+
